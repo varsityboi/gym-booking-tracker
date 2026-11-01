@@ -5,8 +5,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env --watch index.js"
-  },
+  "dev": "node --env-file=.env --watch index.js",
+  "db:setup": "node --env-file=.env setup-db.js"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
