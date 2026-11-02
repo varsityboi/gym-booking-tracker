@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import pool from "./db.js";
 import jwt from "jsonwebtoken";
+import { requireAuth } from "./auth.js";
 const app = express();
 app.use(express.json());
 const PORT = 3000;
@@ -65,6 +66,13 @@ app.post("/auth/login", async (req, res) => {
     token,
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
+});
+app.get("/me", requireAuth, async (req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, email, role FROM users WHERE id = $1",
+    [req.user.id]
+  );
+  res.json(result.rows[0]);
 });
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
