@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import pool from "./db.js";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "./auth.js";
+import { requireAuth, requireAdmin } from "./auth.js";
 const app = express();
 app.use(express.json());
 const PORT = 3000;
@@ -73,6 +74,31 @@ app.get("/me", requireAuth, async (req, res) => {
     [req.user.id]
   );
   res.json(result.rows[0]);
+});
+app.post("/classes", requireAuth, requireAdmin, async (req, res) => {
+  const { title, startsAt, capacity } = req.body ?? {};
+
+  if (typeof title !== "string" || title.trim() === "") {
+    return res.status(400).json({ error: "title is required" });
+  }
+
+  const start = new Date(startsAt);
+  if (typeof startsAt !== "string" || isNaN(start.getTime())) {
+    return res.status(400).json({ error: "startsAt must be a valid date" });
+  }
+  if (start <= new Date()) {
+    return res.status(400).json({ error: "class must start in the future" });
+  }
+
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 200) {
+    return res.status(400).json({ error: "capacity must be a whole number from 1 to 200" });
+  }
+
+  const result = await pool.query(
+    "INSERT INTO classes (title, starts_at, capacity) VALUES ($1, $2, $3) RETURNING *",
+    [title.trim(), start, capacity]
+  );
+  res.status(201).json(result.rows[0]);
 });
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
