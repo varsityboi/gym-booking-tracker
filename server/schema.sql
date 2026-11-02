@@ -30,3 +30,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_booking
 
 CREATE INDEX IF NOT EXISTS idx_classes_starts_at ON classes (starts_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_class ON bookings (class_id);
+CREATE TABLE IF NOT EXISTS booking_events (
+  id SERIAL PRIMARY KEY,
+  booking_id INT NOT NULL REFERENCES bookings(id),
+  user_id INT NOT NULL REFERENCES users(id),
+  class_id INT NOT NULL REFERENCES classes(id),
+  action TEXT NOT NULL CHECK (action IN ('booked', 'cancelled')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION block_changes() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'booking_events is append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER booking_events_no_change
+  BEFORE UPDATE OR DELETE ON booking_events
+  FOR EACH ROW EXECUTE FUNCTION block_changes();
