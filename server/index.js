@@ -1,9 +1,10 @@
 import express from "express";
 import bcrypt from "bcryptjs";
-import pool from "./db.js";
 import jwt from "jsonwebtoken";
-import { requireAuth } from "./auth.js";
+import pool from "./db.js";
 import { requireAuth, requireAdmin } from "./auth.js";
+import { validate, signupSchema, loginSchema, createClassSchema } from "./validate.js";
+
 const app = express();
 app.use(express.json());
 const PORT = 3000;
@@ -11,26 +12,21 @@ const PORT = 3000;
 app.get("/", (req, res) => {
   res.send("Gym API is running");
 });
+
 app.get("/db-test", async (req, res) => {
   const result = await pool.query("SELECT NOW()");
   res.send(result.rows[0]);
 });
-app.post("/auth/signup", async (req, res) => {
-  const { name, email, password } = req.body ?? {};
 
-  if (typeof name !== "string" || typeof email !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "name, email and password are required" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "password must be at least 8 characters" });
-  }
+app.post("/auth/signup", validate(signupSchema), async (req, res) => {
+  const { name, email, password } = req.body;
 
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
     const result = await pool.query(
       "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, role",
-      [name.trim(), email.trim().toLowerCase(), passwordHash]
+      [name, email, passwordHash]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -40,16 +36,13 @@ app.post("/auth/signup", async (req, res) => {
     throw err;
   }
 });
-app.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body ?? {};
 
-  if (typeof email !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "email and password are required" });
-  }
+app.post("/auth/login", validate(loginSchema), async (req, res) => {
+  const { email, password } = req.body;
 
   const result = await pool.query(
     "SELECT id, name, email, role, password_hash FROM users WHERE email = $1",
-    [email.trim().toLowerCase()]
+    [email]
   );
   const user = result.rows[0];
 
@@ -68,6 +61,7 @@ app.post("/auth/login", async (req, res) => {
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
 });
+
 app.get("/me", requireAuth, async (req, res) => {
   const result = await pool.query(
     "SELECT id, name, email, role FROM users WHERE id = $1",
@@ -75,31 +69,17 @@ app.get("/me", requireAuth, async (req, res) => {
   );
   res.json(result.rows[0]);
 });
-app.post("/classes", requireAuth, requireAdmin, async (req, res) => {
-  const { title, startsAt, capacity } = req.body ?? {};
 
-  if (typeof title !== "string" || title.trim() === "") {
-    return res.status(400).json({ error: "title is required" });
-  }
-
-  const start = new Date(startsAt);
-  if (typeof startsAt !== "string" || isNaN(start.getTime())) {
-    return res.status(400).json({ error: "startsAt must be a valid date" });
-  }
-  if (start <= new Date()) {
-    return res.status(400).json({ error: "class must start in the future" });
-  }
-
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 200) {
-    return res.status(400).json({ error: "capacity must be a whole number from 1 to 200" });
-  }
+app.post("/classes", requireAuth, requireAdmin, validate(createClassSchema), async (req, res) => {
+  const { title, startsAt, capacity } = req.body;
 
   const result = await pool.query(
     "INSERT INTO classes (title, starts_at, capacity) VALUES ($1, $2, $3) RETURNING *",
-    [title.trim(), start, capacity]
+    [title, startsAt, capacity]
   );
   res.status(201).json(result.rows[0]);
 });
+
 app.get("/classes", requireAuth, async (req, res) => {
   const result = await pool.query(
     `SELECT id, title, starts_at, capacity, booked,
@@ -110,6 +90,7 @@ app.get("/classes", requireAuth, async (req, res) => {
   );
   res.json(result.rows);
 });
+
 app.post("/classes/:id/book", requireAuth, async (req, res) => {
   const classId = Number(req.params.id);
   if (!Number.isInteger(classId) || classId < 1) {
@@ -154,6 +135,7 @@ app.post("/classes/:id/book", requireAuth, async (req, res) => {
     client.release();
   }
 });
+
 app.post("/bookings/:id/cancel", requireAuth, async (req, res) => {
   const bookingId = Number(req.params.id);
   if (!Number.isInteger(bookingId) || bookingId < 1) {
@@ -195,6 +177,7 @@ app.post("/bookings/:id/cancel", requireAuth, async (req, res) => {
     client.release();
   }
 });
+
 app.get("/bookings/mine", requireAuth, async (req, res) => {
   const result = await pool.query(
     `SELECT b.id, b.class_id, c.title, c.starts_at
@@ -206,6 +189,19 @@ app.get("/bookings/mine", requireAuth, async (req, res) => {
   );
   res.json(result.rows);
 });
+
+app.use((req, res) => {
+  res.status(404).json({ error: "route not found" });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (err.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "invalid JSON in request body" });
+  }
+  res.status(500).json({ error: "something went wrong" });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
