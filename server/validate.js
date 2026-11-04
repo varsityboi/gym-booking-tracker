@@ -33,3 +33,11 @@ export const createClassSchema = z.object({
     .min(1, "capacity must be from 1 to 200")
     .max(200, "capacity must be from 1 to 200"),
 });
+
+export const updateCapacitySchema = z.object({
+  capacity: z
+    .number({ message: "capacity must be a number" })
+    .int("capacity must be a whole number")
+    .min(1, "capacity must be from 1 to 200")
+    .max(200, "capacity must be from 1 to 200"),
+});
