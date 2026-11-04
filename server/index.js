@@ -3,11 +3,11 @@ import pool from "./db.js";
 import authRouter from "./routes/auth.js";
 import classesRouter from "./routes/classes.js";
 import bookingsRouter from "./routes/bookings.js";
-
+import mealRoutes from "./routes/meals.js";
 const app = express();
 app.use(express.json());
 const PORT = 3000;
-
+app.use("/meals", mealRoutes);
 app.get("/", (req, res) => {
   res.send("Gym API is running");
 });

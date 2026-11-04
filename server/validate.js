@@ -41,3 +41,18 @@ export const updateCapacitySchema = z.object({
     .min(1, "capacity must be from 1 to 200")
     .max(200, "capacity must be from 1 to 200"),
 });
+export const createMealSchema = z.object({
+  eatenAt: z.coerce
+    .date({ message: "eatenAt must be a valid date" })
+    .refine((d) => d <= new Date(), "eatenAt can't be in the future")
+    .optional(),
+  items: z
+    .array(
+      z.object({
+        foodId: z.number().int().positive("invalid foodId"),
+        grams: z.number().positive("grams must be more than 0").max(5000, "grams too large"),
+      })
+    )
+    .min(1, "a meal needs at least one food")
+    .max(30, "too many items in one meal"),
+});
