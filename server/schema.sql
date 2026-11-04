@@ -89,3 +89,5 @@ CREATE TABLE IF NOT EXISTS user_targets (
   water_ml INT NOT NULL CHECK (water_ml > 0),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_foods_name_trgm ON foods USING gin (name gin_trgm_ops);
