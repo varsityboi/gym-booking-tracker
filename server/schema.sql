@@ -48,3 +48,44 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE TRIGGER booking_events_no_change
   BEFORE UPDATE OR DELETE ON booking_events
   FOR EACH ROW EXECUTE FUNCTION block_changes();
+CREATE TABLE IF NOT EXISTS foods (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  calories_per_100g NUMERIC(7,2) NOT NULL CHECK (calories_per_100g >= 0),
+  protein_per_100g NUMERIC(6,2) NOT NULL CHECK (protein_per_100g >= 0),
+  fat_per_100g NUMERIC(6,2) NOT NULL CHECK (fat_per_100g >= 0),
+  carbs_per_100g NUMERIC(6,2) NOT NULL CHECK (carbs_per_100g >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS meals (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id),
+  eaten_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meals_user_eaten ON meals (user_id, eaten_at);
+
+CREATE TABLE IF NOT EXISTS meal_items (
+  id SERIAL PRIMARY KEY,
+  meal_id INT NOT NULL REFERENCES meals(id),
+  food_id INT NOT NULL REFERENCES foods(id),
+  grams NUMERIC(7,2) NOT NULL CHECK (grams > 0 AND grams <= 5000)
+);
+CREATE INDEX IF NOT EXISTS idx_meal_items_meal ON meal_items (meal_id);
+
+CREATE TABLE IF NOT EXISTS water_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id),
+  ml INT NOT NULL CHECK (ml > 0 AND ml <= 2000),
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_water_user_logged ON water_logs (user_id, logged_at);
+
+CREATE TABLE IF NOT EXISTS user_targets (
+  user_id INT PRIMARY KEY REFERENCES users(id),
+  calories INT NOT NULL CHECK (calories > 0),
+  protein_g INT NOT NULL CHECK (protein_g >= 0),
+  fat_g INT NOT NULL CHECK (fat_g >= 0),
+  carbs_g INT NOT NULL CHECK (carbs_g >= 0),
+  water_ml INT NOT NULL CHECK (water_ml > 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

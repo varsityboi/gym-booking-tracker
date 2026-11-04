@@ -6,13 +6,15 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env --watch index.js",
-    "db:setup": "node --env-file=.env setup-db.js"
+    "db:setup": "node --env-file=.env setup-db.js",
+    "db:foods": "node --env-file=.env import-foods.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "exceljs": "^4.4.0",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
