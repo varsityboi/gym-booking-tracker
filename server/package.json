@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --env-file=.env --watch index.js",
     "db:setup": "node --env-file=.env setup-db.js",
-    "db:foods": "node --env-file=.env import-foods.js"
+    "db:foods": "node --env-file=.env import-foods.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
