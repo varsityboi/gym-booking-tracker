@@ -56,3 +56,18 @@ export const createMealSchema = z.object({
     .min(1, "a meal needs at least one food")
     .max(30, "too many items in one meal"),
 });
+export const waterSchema = z.object({
+  ml: z
+    .number({ message: "ml must be a number" })
+    .int("ml must be a whole number")
+    .min(1, "ml must be from 1 to 2000")
+    .max(2000, "ml must be from 1 to 2000")
+    .default(250),
+});
+export const targetsSchema = z.object({
+  calories: z.number().int().min(500, "calories must be from 500 to 6000").max(6000, "calories must be from 500 to 6000"),
+  proteinG: z.number().int().min(0).max(500, "protein must be at most 500g"),
+  fatG: z.number().int().min(0).max(500, "fat must be at most 500g"),
+  carbsG: z.number().int().min(0).max(1000, "carbs must be at most 1000g"),
+  waterMl: z.number().int().min(250, "water must be from 250 to 8000 ml").max(8000, "water must be from 250 to 8000 ml"),
+});

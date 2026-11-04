@@ -4,10 +4,18 @@ import authRouter from "./routes/auth.js";
 import classesRouter from "./routes/classes.js";
 import bookingsRouter from "./routes/bookings.js";
 import mealRoutes from "./routes/meals.js";
+import foodRoutes from "./routes/foods.js";
+import waterRoutes from "./routes/water.js";
+import targetRoutes from "./routes/targets.js";
+import meRoutes from "./routes/me.js";
 const app = express();
 app.use(express.json());
 const PORT = 3000;
 app.use("/meals", mealRoutes);
+app.use("/foods", foodRoutes);
+app.use("/water", waterRoutes);
+app.use("/targets", targetRoutes);
+app.use("/me", meRoutes);
 app.get("/", (req, res) => {
   res.send("Gym API is running");
 });
