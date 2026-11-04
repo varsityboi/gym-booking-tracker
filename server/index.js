@@ -38,6 +38,12 @@ app.use((err, req, res, next) => {
   if (err.type === "entity.parse.failed") {
     return res.status(400).json({ error: "invalid JSON in request body" });
   }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "photo is too large (max 8 MB)" });
+  }
+  if (err.code === "LIMIT_UNEXPECTED_FILE" || err.code === "LIMIT_FILE_COUNT") {
+    return res.status(400).json({ error: "send exactly one photo in the 'photo' field" });
+  }
   res.status(500).json({ error: "something went wrong" });
 });
 
