@@ -24,15 +24,19 @@ router.post("/analyze", requireAuth, upload.single("photo"), async (req, res) =>
   }
 
   let detectedItems;
+  let visionProvider;
   try {
-    detectedItems = await readPlate(req.file.buffer, req.file.mimetype);
+    ({ items: detectedItems, provider: visionProvider } = await readPlate(
+      req.file.buffer,
+      req.file.mimetype
+    ));
   } catch (err) {
     console.error(err);
     return res.status(502).json({ error: "couldn't read the photo, please try again" });
   }
 
   // Nothing is saved here; the client confirms or edits, then POSTs /meals.
-  res.json(await analyzeItems(detectedItems));
+  res.json(await analyzeItems(detectedItems, { visionProvider }));
 });
 
 router.post("/", requireAuth, validate(createMealSchema), async (req, res) => {

@@ -1,6 +1,7 @@
-import { test, beforeEach, afterEach } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { readPlate, pickMatches, estimateNutrition } from "./gemini.js";
+import { isDeepStrictEqual } from "node:util";
+import { readPlate, pickMatches, estimateNutrition, parseChain } from "./gemini.js";
 import { analyzeItems } from "./analyze.js";
 
 const image = Buffer.from("fake image");
@@ -17,25 +18,72 @@ function apiError(status, code) {
   return err;
 }
 
+// Chains passed explicitly, so tests don't depend on the API keys in the env.
+const GEMINI = ["gemini"];
+
+// Shaped like groq.js's GroqError.
+function groqError(status, code) {
+  const err = new Error(`Groq HTTP ${status}`);
+  err.name = "GroqError";
+  err.status = status;
+  err.error = { error: { message: code, type: code, code } };
+  return err;
+}
+
 const timeoutError = () =>
   Object.assign(new Error("Request timed out."), { name: "APIConnectionTimeoutError" });
 
-// Every create call made in the current test, across all fakes.
+// Every AI call made in the current test, across all fakes and providers.
 let allCalls;
 
-// Records every call so tests can check models, options and waits.
+// Records every call so tests can check models, timeouts and waits.
 // `takesMs` says how far each call moves the fake clock.
-function fakeCreate(responses, { takesMs = () => 0 } = {}) {
+function recorder(responses, takesMs, describe) {
   const calls = [];
-  const create = async (params, options) => {
-    calls.push({ model: params.model, options, params });
-    allCalls.push({ model: params.model, options });
-    clock += takesMs(options, calls.length);
+  const fn = async (...args) => {
+    const call = describe(...args);
+    calls.push(call);
+    allCalls.push(call);
+    clock += takesMs(call, calls.length);
     const next = responses[calls.length - 1];
     if (next instanceof Error) throw next;
     return next;
   };
-  return { create, calls };
+  return { fn, calls };
+}
+
+// Fake client.interactions.create (readPlate).
+function fakeCreate(responses, { takesMs = () => 0 } = {}) {
+  const { fn, calls } = recorder(responses, takesMs, (params, options) => ({
+    model: params.model,
+    timeoutMs: options.timeout_ms,
+    sdkRetriesOff: isDeepStrictEqual(options.retries, { strategy: "none" }),
+    params,
+    options,
+  }));
+  return { create: fn, calls };
+}
+
+// Fake client.models.generateContent (pickMatches, estimateNutrition).
+function fakeGenerate(responses, { takesMs = () => 0 } = {}) {
+  const { fn, calls } = recorder(responses, takesMs, (params) => ({
+    model: params.model,
+    timeoutMs: params.config.abortSignal.timeoutMs, // see the AbortSignal.timeout stub
+    sdkRetriesOff: isDeepStrictEqual(params.config.httpOptions.retryOptions, { attempts: 1 }),
+    params,
+  }));
+  return { generate: fn, calls };
+}
+
+// Fake groqChat (groq.js); it returns the reply text. No SDK, so no SDK retries.
+function fakeGroq(responses, { takesMs = () => 0 } = {}) {
+  const { fn, calls } = recorder(responses, takesMs, (params) => ({
+    model: params.model,
+    timeoutMs: params.timeoutMs,
+    sdkRetriesOff: true,
+    params,
+  }));
+  return { groq: fn, calls };
 }
 
 // Fake clock: sleep moves it forward instead of really waiting.
@@ -56,28 +104,31 @@ beforeEach(() => {
   sleeps = [];
   warnings = [];
   console.warn = (msg) => warnings.push(msg);
+  // generateContent's per-attempt limit is AbortSignal.timeout(ms); record the ms.
+  mock.method(AbortSignal, "timeout", (ms) => ({ timeoutMs: ms }));
 });
 afterEach(() => {
   console.warn = originalWarn;
+  mock.restoreAll();
   // The SDK's built-in retries must be off on every call, or they hide inside
   // one attempt and blow through our time budget.
-  assert.ok(allCalls.length > 0, "test made no create calls");
+  assert.ok(allCalls.length > 0, "test made no AI calls");
   for (const call of allCalls) {
-    assert.deepEqual(call.options.retries, { strategy: "none" }, `retries on ${call.model}`);
+    assert.ok(call.sdkRetriesOff, `SDK retries left on for ${call.model}`);
   }
 });
 
 test("retries a 503 once with backoff, then succeeds", async () => {
   const { create, calls } = fakeCreate([apiError(503, "service_unavailable"), okInteraction]);
 
-  const items = await readPlate(image, "image/jpeg", { create, sleep, now });
+  const { items } = await readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now });
 
   assert.deepEqual(items, [{ name: "Boiled rice", grams: 150 }]);
   assert.deepEqual(
     calls.map((c) => c.model),
     ["gemini-3.6-flash", "gemini-3.6-flash"]
   );
-  assert.ok(calls.every((c) => c.options.timeout_ms === 15_000));
+  assert.ok(calls.every((c) => c.timeoutMs === 15_000));
   assert.equal(sleeps.length, 1);
   assert.ok(sleeps[0] >= 1000 && sleeps[0] < 1250, `wait ${sleeps[0]}`);
   assert.equal(warnings.length, 1);
@@ -91,7 +142,7 @@ test("two 503s on flash, then flash-lite succeeds", async () => {
     okInteraction,
   ]);
 
-  const items = await readPlate(image, "image/jpeg", { create, sleep, now });
+  const { items } = await readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now });
 
   assert.equal(items.length, 1);
   assert.deepEqual(
@@ -107,7 +158,7 @@ test("does not retry a non-retryable error", async () => {
   const badKey = apiError(400, "invalid_argument");
   const { create, calls } = fakeCreate([badKey, okInteraction]);
 
-  await assert.rejects(readPlate(image, "image/jpeg", { create, sleep, now }), badKey);
+  await assert.rejects(readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now }), badKey);
 
   assert.equal(calls.length, 1);
   assert.equal(sleeps.length, 0);
@@ -122,7 +173,7 @@ test("rate limit and timeout both count as busy and lead to the fallback", async
     okInteraction,
   ]);
 
-  const items = await readPlate(image, "image/jpeg", { create, sleep, now });
+  const { items } = await readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now });
 
   assert.equal(items.length, 1);
   assert.equal(calls.at(-1).model, "gemini-3.5-flash-lite");
@@ -137,7 +188,7 @@ test("throws the last error when the fallback also fails", async () => {
     last,
   ]);
 
-  await assert.rejects(readPlate(image, "image/jpeg", { create, sleep, now }), last);
+  await assert.rejects(readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now }), last);
   assert.equal(calls.length, 3);
   assert.equal(warnings.length, 3);
   assert.match(warnings[2], /attempt 3\/3 on gemini-3\.5-flash-lite/);
@@ -148,15 +199,15 @@ test("every attempt hangs: 2 flash attempts, then flash-lite gets the time left"
   const last = timeoutError();
   // Every attempt hangs until its own timeout_ms runs out.
   const { create, calls } = fakeCreate([timeoutError(), timeoutError(), last], {
-    takesMs: (options) => options.timeout_ms,
+    takesMs: (call) => call.timeoutMs,
   });
 
-  await assert.rejects(readPlate(image, "image/jpeg", { create, sleep, now }), last);
+  await assert.rejects(readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now }), last);
 
   // 0-15s flash, 1s wait, 16-31s flash (17s of its share left, capped at 15s),
   // 31-45s flash-lite gets the 14s that remain.
   assert.deepEqual(
-    calls.map((c) => [c.model, c.options.timeout_ms]),
+    calls.map((c) => [c.model, c.timeoutMs]),
     [
       ["gemini-3.6-flash", 15_000],
       ["gemini-3.6-flash", 15_000],
@@ -175,12 +226,12 @@ test("skips the flash retry when only the reserve is left", async (t) => {
     takesMs: (options, n) => (n === 1 ? 30_000 : 0),
   });
 
-  const items = await readPlate(image, "image/jpeg", { create, sleep, now });
+  const { items } = await readPlate(image, "image/jpeg", { chain: GEMINI, create, sleep, now });
 
   // 15s left = only 3s for flash beyond the reserve, so straight to flash-lite, no wait.
   assert.equal(items.length, 1);
   assert.deepEqual(
-    calls.map((c) => [c.model, c.options.timeout_ms]),
+    calls.map((c) => [c.model, c.timeoutMs]),
     [
       ["gemini-3.6-flash", 15_000],
       ["gemini-3.5-flash-lite", 15_000],
@@ -192,8 +243,9 @@ test("skips the flash retry when only the reserve is left", async (t) => {
 
 // --- pickMatches, estimateNutrition and the /analyze merge -----------------
 
-const json = (value) => ({ output_text: JSON.stringify(value) });
-const promptOf = (call) => call.params.input[0].text;
+// A generateContent response; the SDK's `text` getter returns the reply text.
+const json = (value) => ({ text: JSON.stringify(value) });
+const promptOf = (call) => call.params.contents;
 
 // Rows shaped like searchFoods results.
 const food = (id, name, score, full, [cal, protein, fat, carbs]) => ({
@@ -217,44 +269,86 @@ const search = async (name) => ({ Paratha: parathas, Roti: rotis })[name] ?? [];
 const asCandidates = (rows) => rows.map(({ id, name }) => ({ id, name }));
 
 test("pickMatches returns the picked ids, and null for 'none'", async () => {
-  const { create, calls } = fakeCreate([
+  const { generate, calls } = fakeGenerate([
     json({ picks: [{ index: 0, foodId: 2 }, { index: 1, foodId: 0 }] }),
   ]);
 
-  const picked = await pickMatches(
+  const { picked } = await pickMatches(
     [
       { detected: "Paratha", grams: 90, candidates: asCandidates(parathas) },
       { detected: "Tomato chutney", grams: 20, candidates: asCandidates(rotis) },
     ],
-    { create, sleep, now }
+    { chain: GEMINI, generate, sleep, now }
   );
 
   assert.deepEqual(picked, [2, null]);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].options.timeout_ms, 5_000); // 10s text budget, not the photo one
+  assert.equal(calls[0].timeoutMs, 5_000); // 10s text budget, not the photo one
   assert.match(promptOf(calls[0]), /"id":2,"name":"Plain parantha\/paratha"/);
-  assert.equal(calls[0].params.input.length, 1, "text only, no image");
+  assert.equal(typeof promptOf(calls[0]), "string", "text only, no image");
+  assert.equal(calls[0].params.config.responseMimeType, "application/json");
+  assert.deepEqual(calls[0].params.config.responseJsonSchema.required, ["picks"]);
+});
+
+test("pickMatches: a timeout is retryable; flash-lite gets the reserve", async (t) => {
+  t.mock.method(Math, "random", () => 0);
+  // generateContent's per-attempt timeout aborts the fetch, which throws AbortError.
+  const abort = () => Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+  const { generate, calls } = fakeGenerate([abort(), json({ picks: [{ index: 0, foodId: 2 }] })], {
+    takesMs: (call) => call.timeoutMs,
+  });
+
+  const { picked } = await pickMatches(
+    [{ detected: "Paratha", grams: 90, candidates: asCandidates(parathas) }],
+    { chain: GEMINI, generate, sleep, now }
+  );
+
+  // 0-5s flash hangs; 5s left is all reserve, so no flash retry; flash-lite gets 5s.
+  assert.deepEqual(picked, [2]);
+  assert.deepEqual(
+    calls.map((c) => [c.model, c.timeoutMs]),
+    [
+      ["gemini-3.6-flash", 5_000],
+      ["gemini-3.5-flash-lite", 5_000],
+    ]
+  );
+  assert.deepEqual(sleeps, []);
+  assert.match(warnings[0], /attempt 1\/3 on gemini-3\.6-flash failed \(AbortError\)/);
+});
+
+test("pickMatches: a reply with no text is an error", async () => {
+  const { generate } = fakeGenerate([{ text: undefined }]);
+
+  await assert.rejects(
+    pickMatches([{ detected: "Paratha", grams: 90, candidates: asCandidates(parathas) }], {
+      chain: GEMINI,
+      generate,
+      sleep,
+      now,
+    }),
+    /did not return valid JSON/
+  );
 });
 
 test("pickMatches turns a foodId that wasn't offered for that item into null", async () => {
   // 11 is a real candidate, but for the second item, not the first.
-  const { create } = fakeCreate([
+  const { generate } = fakeGenerate([
     json({ picks: [{ index: 0, foodId: 11 }, { index: 1, foodId: 11 }] }),
   ]);
 
-  const picked = await pickMatches(
+  const { picked } = await pickMatches(
     [
       { detected: "Paratha", grams: 90, candidates: asCandidates(parathas) },
       { detected: "Roti", grams: 40, candidates: asCandidates(rotis) },
     ],
-    { create, sleep, now }
+    { chain: GEMINI, generate, sleep, now }
   );
 
   assert.deepEqual(picked, [null, 11]);
 });
 
 test("estimateNutrition turns impossible numbers into null", async () => {
-  const { create, calls } = fakeCreate([
+  const { generate, calls } = fakeGenerate([
     json({
       estimates: [
         { index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 },
@@ -265,9 +359,9 @@ test("estimateNutrition turns impossible numbers into null", async () => {
     }),
   ]);
 
-  const estimates = await estimateNutrition(
+  const { estimates } = await estimateNutrition(
     [{ name: "Tomato chutney" }, { name: "A" }, { name: "B" }, { name: "C" }, { name: "Not answered" }],
-    { create, sleep, now }
+    { chain: GEMINI, generate, sleep, now }
   );
 
   assert.deepEqual(estimates, [
@@ -278,17 +372,18 @@ test("estimateNutrition turns impossible numbers into null", async () => {
     null,
   ]);
   assert.equal(calls.length, 1, "one call for all items");
+  assert.deepEqual(calls[0].params.config.responseJsonSchema.required, ["estimates"]);
 });
 
 test("analyze: AI picks table items, estimates the rest, and adds up totals", async () => {
-  const { create, calls } = fakeCreate([
+  const { generate, calls } = fakeGenerate([
     json({ picks: [{ index: 0, foodId: 2 }] }),
     json({ estimates: [{ index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 }] }),
   ]);
 
   const { items, totals } = await analyzeItems(
     [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
-    { search, gemini: { create, sleep, now } }
+    { search, ai: { chain: GEMINI, generate, sleep, now } }
   );
 
   assert.deepEqual(items[0], {
@@ -321,14 +416,14 @@ test("analyze: AI picks table items, estimates the rest, and adds up totals", as
 });
 
 test("analyze: falls back to search ranking when pickMatches throws", async () => {
-  const { create } = fakeCreate([
+  const { generate } = fakeGenerate([
     apiError(400, "invalid_argument"), // pickMatches
     json({ estimates: [{ index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 }] }),
   ]);
 
-  const { items, totals } = await analyzeItems(
+  const { items, totals, providers } = await analyzeItems(
     [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
-    { search, gemini: { create, sleep, now } }
+    { search, ai: { chain: GEMINI, generate, sleep, now } }
   );
 
   // Search's top row, not confident: it's only 0.033 ahead of the next one.
@@ -341,17 +436,18 @@ test("analyze: falls back to search ranking when pickMatches throws", async () =
   assert.equal(items[1].source, "search");
   assert.equal(totals.unknownCount, 0);
   assert.ok(warnings.some((w) => /analyze: pickMatches failed, using search ranking/.test(w)));
+  assert.deepEqual(providers, { vision: null, pick: null, estimate: "gemini" });
 });
 
 test("analyze: leaves items unknown when estimateNutrition throws", async () => {
-  const { create } = fakeCreate([
+  const { generate } = fakeGenerate([
     json({ picks: [{ index: 0, foodId: 2 }] }),
     apiError(400, "invalid_argument"), // estimateNutrition
   ]);
 
-  const { items, totals } = await analyzeItems(
+  const { items, totals, providers } = await analyzeItems(
     [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
-    { search, gemini: { create, sleep, now } }
+    { search, ai: { chain: GEMINI, generate, sleep, now } }
   );
 
   assert.equal(items[0].kind, "table");
@@ -371,4 +467,164 @@ test("analyze: leaves items unknown when estimateNutrition throws", async () => 
   // Totals cover only the table item.
   assert.deepEqual(totals, { calories: 268.2, protein_g: 5.9, fat_g: 12, carbs_g: 34.7, unknownCount: 1 });
   assert.ok(warnings.some((w) => /analyze: estimateNutrition failed, leaving items unknown/.test(w)));
+  assert.deepEqual(providers, { vision: null, pick: "gemini", estimate: null });
+});
+
+// --- provider chains (Groq + Gemini) ------------------------------------------
+
+const groqJson = (value) => JSON.stringify(value);
+const paratha = [{ detected: "Paratha", grams: 90, candidates: asCandidates(parathas) }];
+
+test("text chain: Groq first; a 429 falls back to Gemini", async () => {
+  const { groq, calls: groqCalls } = fakeGroq([groqError(429, "rate_limit_exceeded")]);
+  const { generate, calls: geminiCalls } = fakeGenerate([json({ picks: [{ index: 0, foodId: 2 }] })]);
+
+  const result = await pickMatches(paratha, {
+    chain: ["groq", "gemini"],
+    groq,
+    generate,
+    sleep,
+    now,
+  });
+
+  assert.deepEqual(result, { picked: [2], provider: "gemini" });
+  assert.deepEqual(
+    allCalls.map((c) => c.model),
+    ["openai/gpt-oss-20b", "gemini-3.6-flash"]
+  );
+  // Groq keeps Gemini's fallback reserve back, but 5s per attempt still fits.
+  assert.equal(groqCalls[0].timeoutMs, 5_000);
+  assert.equal(geminiCalls[0].timeoutMs, 5_000);
+  // Same prompt and schema for both providers.
+  assert.equal(groqCalls[0].params.content, promptOf(geminiCalls[0]));
+  assert.equal(groqCalls[0].params.schema, geminiCalls[0].params.config.responseJsonSchema);
+  assert.deepEqual(sleeps, []);
+  assert.match(warnings[0], /attempt 1\/4 on groq openai\/gpt-oss-20b failed \(rate_limit_exceeded\)/);
+});
+
+test("text chain: Groq answers, Gemini isn't called", async () => {
+  const { groq } = fakeGroq([
+    groqJson({ estimates: [{ index: 0, calories: 40, protein_g: 1.1, fat_g: 0.1, carbs_g: 9 }] }),
+  ]);
+  const { generate, calls: geminiCalls } = fakeGenerate([]);
+
+  const result = await estimateNutrition([{ name: "Sliced onion" }], {
+    chain: ["groq", "gemini"],
+    groq,
+    generate,
+    sleep,
+    now,
+  });
+
+  assert.deepEqual(result, {
+    estimates: [{ calories: 40, protein_g: 1.1, fat_g: 0.1, carbs_g: 9 }],
+    provider: "groq",
+  });
+  assert.equal(geminiCalls.length, 0);
+});
+
+test("text chain: a non-retryable Groq error stops the chain", async () => {
+  const badRequest = groqError(400, "json_validate_failed");
+  const { groq } = fakeGroq([badRequest]);
+  const { generate, calls: geminiCalls } = fakeGenerate([]);
+
+  await assert.rejects(
+    pickMatches(paratha, { chain: ["groq", "gemini"], groq, generate, sleep, now }),
+    badRequest
+  );
+  assert.equal(geminiCalls.length, 0);
+});
+
+test("vision chain: Gemini hangs throughout, Groq still gets its reserved 10s", async (t) => {
+  t.mock.method(Math, "random", () => 0);
+  const { create, calls: geminiCalls } = fakeCreate([timeoutError(), timeoutError(), timeoutError()], {
+    takesMs: (call) => call.timeoutMs,
+  });
+  const { groq, calls: groqCalls } = fakeGroq(
+    [groqJson({ items: [{ name: "Chapati/Roti", grams: 60 }] })],
+    { takesMs: (call) => call.timeoutMs }
+  );
+
+  const result = await readPlate(image, "image/png", {
+    chain: ["gemini", "groq"],
+    create,
+    groq,
+    sleep,
+    now,
+  });
+
+  assert.deepEqual(result, { items: [{ name: "Chapati/Roti", grams: 60 }], provider: "groq" });
+  // 0-15s flash, 1s wait, 16-23s flash (its share ends where the 12s flash-lite
+  // and 10s Groq reserves begin), 23-35s flash-lite (up to Groq's 10s), 35-45s Groq.
+  assert.deepEqual(
+    allCalls.map((c) => [c.model, c.timeoutMs]),
+    [
+      ["gemini-3.6-flash", 15_000],
+      ["gemini-3.6-flash", 7_000],
+      ["gemini-3.5-flash-lite", 12_000],
+      ["qwen/qwen3.8-27b", 10_000],
+    ]
+  );
+  assert.equal(geminiCalls.length, 3);
+  assert.equal(clock, 45_000);
+  // Same prompt; the image goes as a data URL with the upload's MIME type.
+  const [text, img] = groqCalls[0].params.content;
+  assert.equal(text.text, geminiCalls[0].params.input[0].text);
+  assert.equal(img.image_url.url, `data:image/png;base64,${image.toString("base64")}`);
+});
+
+test("vision chain: Gemini answers first, Groq isn't called", async () => {
+  const { create } = fakeCreate([okInteraction]);
+  const { groq, calls: groqCalls } = fakeGroq([]);
+
+  const result = await readPlate(image, "image/jpeg", {
+    chain: ["gemini", "groq"],
+    create,
+    groq,
+    sleep,
+    now,
+  });
+
+  assert.equal(result.provider, "gemini");
+  assert.equal(groqCalls.length, 0);
+});
+
+test("a missing API key skips that provider; unknown names throw", async () => {
+  const onlyGemini = (provider) => provider === "gemini";
+  const chain = parseChain("TEXT_AI", "groq, gemini", onlyGemini);
+  assert.deepEqual(chain, ["gemini"]);
+  assert.deepEqual(parseChain("TEXT_AI", "groq", onlyGemini), []);
+  assert.throws(
+    () => parseChain("VISION_AI", "gemini,openai", onlyGemini),
+    /VISION_AI="gemini,openai": unknown AI provider "openai"/
+  );
+
+  const { groq, calls: groqCalls } = fakeGroq([]);
+  const { generate } = fakeGenerate([json({ picks: [{ index: 0, foodId: 2 }] })]);
+  const result = await pickMatches(paratha, { chain, groq, generate, sleep, now });
+  assert.equal(result.provider, "gemini");
+  assert.equal(groqCalls.length, 0);
+
+  // No provider left at all: a clear error rather than a silent empty answer.
+  await assert.rejects(
+    pickMatches(paratha, { chain: [], groq, generate, sleep, now }),
+    /pickMatches: no AI provider available/
+  );
+});
+
+test("analyze: a Groq-read photo is never confident; providers are reported", async () => {
+  const { groq } = fakeGroq([
+    groqJson({ picks: [{ index: 0, foodId: 2 }] }),
+    groqJson({ estimates: [{ index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 }] }),
+  ]);
+
+  const result = await analyzeItems(
+    [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
+    { search, visionProvider: "groq", ai: { chain: ["groq"], groq, sleep, now } }
+  );
+
+  assert.equal(result.items[0].kind, "table");
+  assert.equal(result.items[0].foodId, 2);
+  assert.ok(result.items.every((it) => it.confident === false));
+  assert.deepEqual(result.providers, { vision: "groq", pick: "groq", estimate: "groq" });
 });

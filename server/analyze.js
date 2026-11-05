@@ -28,9 +28,18 @@ const tablePer100g = (row) => ({
 // Turns readPlate's [{ name, grams }] into analyze items with nutrition and
 // meal totals. Gemini failures after readPlate don't fail the request: a
 // failed pick falls back to search ranking, a failed estimate leaves the
-// item unknown. `gemini` is passed through to the Gemini calls (tests use it
-// for a fake create).
-export async function analyzeItems(detectedItems, { search = searchFoods, gemini = {} } = {}) {
+// item unknown. `ai` is passed through to the AI calls (tests use it for fake
+// providers). `visionProvider` is who read the photo: items from a Groq-read
+// photo are never confident, since its plate reading is less reliable.
+// Returns { items, totals, providers: { vision, pick, estimate } }; a provider
+// is null for a step that didn't run or failed.
+export async function analyzeItems(
+  detectedItems,
+  { search = searchFoods, ai = {}, visionProvider = null } = {}
+) {
+  const providers = { vision: visionProvider, pick: null, estimate: null };
+  const trustPhoto = visionProvider !== "groq";
+
   const found = await Promise.all(
     detectedItems.map(async ({ name, grams }) => ({
       detected: name,
@@ -43,14 +52,15 @@ export async function analyzeItems(detectedItems, { search = searchFoods, gemini
   let source = "ai";
   let matches;
   try {
-    const picked = await pickMatches(
+    const { picked, provider } = await pickMatches(
       found.map(({ detected, grams, candidates }) => ({
         detected,
         grams,
         candidates: candidates.map(({ id, name }) => ({ id, name })),
       })),
-      gemini
+      ai
     );
+    providers.pick = provider;
     matches = found.map(({ candidates }, i) => {
       const row = candidates.find((c) => c.id === picked[i]);
       return row ? { row, confident: true } : null;
@@ -67,10 +77,11 @@ export async function analyzeItems(detectedItems, { search = searchFoods, gemini
   const estimates = new Map();
   if (unmatched.length > 0) {
     try {
-      const results = await estimateNutrition(
+      const { estimates: results, provider } = await estimateNutrition(
         unmatched.map((i) => ({ name: found[i].detected })),
-        gemini
+        ai
       );
+      providers.estimate = provider;
       unmatched.forEach((i, j) => estimates.set(i, results[j] ?? null));
     } catch (err) {
       console.warn(`analyze: estimateNutrition failed, leaving items unknown (${err.message})`);
@@ -91,7 +102,7 @@ export async function analyzeItems(detectedItems, { search = searchFoods, gemini
       return {
         ...base,
         kind: "table",
-        confident: match.confident,
+        confident: match.confident && trustPhoto,
         foodId: match.row.id,
         name: match.row.name,
         per100g,
@@ -133,5 +144,5 @@ export async function analyzeItems(detectedItems, { search = searchFoods, gemini
   );
   totals.unknownCount = items.filter((it) => it.kind === "unknown").length;
 
-  return { items, totals };
+  return { items, totals, providers };
 }
