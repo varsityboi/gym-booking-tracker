@@ -67,7 +67,9 @@ export default function ClassCard({ cls, booking, waiting, reload }) {
           <h3 className="truncate font-semibold text-slate-900">{cls.title}</h3>
           <p className="mt-0.5 text-sm text-slate-600">{timeOfDay(cls.starts_at)}</p>
           <p className={`mt-1 text-sm ${full ? "font-medium text-red-700" : "text-slate-500"}`}>
-            {full ? "Full" : `${cls.places_left} of ${cls.capacity} places left`}
+            {full
+              ? "Full"
+              : `${cls.places_left} of ${cls.capacity} ${cls.places_left === 1 ? "place" : "places"} left`}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
