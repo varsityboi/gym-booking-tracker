@@ -4,17 +4,8 @@ import { requireAuth } from "../auth.js";
 import { validate, createMealSchema } from "../validate.js";
 import multer from "multer";
 import { readPlate } from "../gemini.js";
-import { searchFoods } from "../foodSearch.js";
+import { analyzeItems } from "../analyze.js";
 const router = Router();
-
-const round1 = (n) => Math.round(n * 10) / 10;
-
-// Confident only when the top match is strong and clearly ahead of the runner-up.
-const combined = (r) => r.score + r.full;
-const isConfident = (top, second) =>
-  Boolean(top) &&
-  top.score >= 0.8 &&
-  (!second || combined(top) - combined(second) >= 0.1);
 
 const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
@@ -40,30 +31,8 @@ router.post("/analyze", requireAuth, upload.single("photo"), async (req, res) =>
     return res.status(502).json({ error: "couldn't read the photo, please try again" });
   }
 
-  const items = await Promise.all(
-    detectedItems.map(async ({ name, grams }) => {
-      const [top, ...rest] = await searchFoods(name, 3);
-      const per = (value) => round1((grams * value) / 100);
-      return {
-        detected: name,
-        grams,
-        match: top
-          ? {
-              foodId: top.id,
-              name: top.name,
-              calories: per(top.calories_per_100g),
-              protein_g: per(top.protein_per_100g),
-              fat_g: per(top.fat_per_100g),
-              carbs_g: per(top.carbs_per_100g),
-            }
-          : null,
-        confident: isConfident(top, rest[0]),
-        alternatives: rest.map((r) => ({ foodId: r.id, name: r.name })),
-      };
-    })
-  );
-
-  res.json({ items });
+  // Nothing is saved here; the client confirms or edits, then POSTs /meals.
+  res.json(await analyzeItems(detectedItems));
 });
 
 router.post("/", requireAuth, validate(createMealSchema), async (req, res) => {

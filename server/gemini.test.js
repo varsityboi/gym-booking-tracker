@@ -1,6 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { readPlate } from "./gemini.js";
+import { readPlate, pickMatches, estimateNutrition } from "./gemini.js";
+import { analyzeItems } from "./analyze.js";
 
 const image = Buffer.from("fake image");
 const okInteraction = {
@@ -27,7 +28,7 @@ let allCalls;
 function fakeCreate(responses, { takesMs = () => 0 } = {}) {
   const calls = [];
   const create = async (params, options) => {
-    calls.push({ model: params.model, options });
+    calls.push({ model: params.model, options, params });
     allCalls.push({ model: params.model, options });
     clock += takesMs(options, calls.length);
     const next = responses[calls.length - 1];
@@ -187,4 +188,187 @@ test("skips the flash retry when only the reserve is left", async (t) => {
   );
   assert.deepEqual(sleeps, []);
   assert.match(warnings[1], /no time for attempt 2\/3 on gemini-3\.6-flash, skipping/);
+});
+
+// --- pickMatches, estimateNutrition and the /analyze merge -----------------
+
+const json = (value) => ({ output_text: JSON.stringify(value) });
+const promptOf = (call) => call.params.input[0].text;
+
+// Rows shaped like searchFoods results.
+const food = (id, name, score, full, [cal, protein, fat, carbs]) => ({
+  id,
+  name,
+  score,
+  full,
+  calories_per_100g: cal,
+  protein_per_100g: protein,
+  fat_per_100g: fat,
+  carbs_per_100g: carbs,
+});
+const parathas = [
+  food(1, "Dal parantha/paratha", 1, 0.533, [260, 8, 10, 35]),
+  food(2, "Plain parantha/paratha", 1, 0.5, [298, 6.5, 13.3, 38.6]),
+  food(3, "Paneer parantha/paratha", 1, 0.5, [280, 10, 14, 30]),
+];
+const rotis = [food(10, "Soya roti", 1, 0.5, [250, 15, 5, 35]), food(11, "Chapati/Roti", 1, 0.417, [202.31, 5.88, 3.56, 35.65])];
+// Fake searchFoods: paratha and roti are in the table, chutney isn't.
+const search = async (name) => ({ Paratha: parathas, Roti: rotis })[name] ?? [];
+const asCandidates = (rows) => rows.map(({ id, name }) => ({ id, name }));
+
+test("pickMatches returns the picked ids, and null for 'none'", async () => {
+  const { create, calls } = fakeCreate([
+    json({ picks: [{ index: 0, foodId: 2 }, { index: 1, foodId: 0 }] }),
+  ]);
+
+  const picked = await pickMatches(
+    [
+      { detected: "Paratha", grams: 90, candidates: asCandidates(parathas) },
+      { detected: "Tomato chutney", grams: 20, candidates: asCandidates(rotis) },
+    ],
+    { create, sleep, now }
+  );
+
+  assert.deepEqual(picked, [2, null]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.timeout_ms, 5_000); // 10s text budget, not the photo one
+  assert.match(promptOf(calls[0]), /"id":2,"name":"Plain parantha\/paratha"/);
+  assert.equal(calls[0].params.input.length, 1, "text only, no image");
+});
+
+test("pickMatches turns a foodId that wasn't offered for that item into null", async () => {
+  // 11 is a real candidate, but for the second item, not the first.
+  const { create } = fakeCreate([
+    json({ picks: [{ index: 0, foodId: 11 }, { index: 1, foodId: 11 }] }),
+  ]);
+
+  const picked = await pickMatches(
+    [
+      { detected: "Paratha", grams: 90, candidates: asCandidates(parathas) },
+      { detected: "Roti", grams: 40, candidates: asCandidates(rotis) },
+    ],
+    { create, sleep, now }
+  );
+
+  assert.deepEqual(picked, [null, 11]);
+});
+
+test("estimateNutrition turns impossible numbers into null", async () => {
+  const { create, calls } = fakeCreate([
+    json({
+      estimates: [
+        { index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 },
+        { index: 1, calories: 1200, protein_g: 5, fat_g: 5, carbs_g: 5 }, // calories > 900
+        { index: 2, calories: 500, protein_g: 60, fat_g: 30, carbs_g: 20 }, // macros sum to 110 g
+        { index: 3, calories: 100, protein_g: -1, fat_g: 1, carbs_g: 1 }, // negative
+      ],
+    }),
+  ]);
+
+  const estimates = await estimateNutrition(
+    [{ name: "Tomato chutney" }, { name: "A" }, { name: "B" }, { name: "C" }, { name: "Not answered" }],
+    { create, sleep, now }
+  );
+
+  assert.deepEqual(estimates, [
+    { calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 },
+    null,
+    null,
+    null,
+    null,
+  ]);
+  assert.equal(calls.length, 1, "one call for all items");
+});
+
+test("analyze: AI picks table items, estimates the rest, and adds up totals", async () => {
+  const { create, calls } = fakeCreate([
+    json({ picks: [{ index: 0, foodId: 2 }] }),
+    json({ estimates: [{ index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 }] }),
+  ]);
+
+  const { items, totals } = await analyzeItems(
+    [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
+    { search, gemini: { create, sleep, now } }
+  );
+
+  assert.deepEqual(items[0], {
+    detected: "Paratha",
+    grams: 90,
+    source: "ai",
+    alternatives: [
+      { foodId: 1, name: "Dal parantha/paratha" },
+      { foodId: 3, name: "Paneer parantha/paratha" },
+    ],
+    kind: "table",
+    confident: true,
+    foodId: 2,
+    name: "Plain parantha/paratha",
+    per100g: { calories: 298, protein_g: 6.5, fat_g: 13.3, carbs_g: 38.6 },
+    nutrition: { calories: 268.2, protein_g: 5.9, fat_g: 12, carbs_g: 34.7 },
+    explanation: "Plain parantha/paratha from the nutrition table: 298 kcal per 100g x 90 g = 268.2 kcal",
+  });
+  assert.equal(items[1].kind, "estimated");
+  assert.equal(items[1].confident, false);
+  assert.deepEqual(items[1].nutrition, { calories: 14, protein_g: 0.4, fat_g: 0.2, carbs_g: 2.8 });
+  assert.equal(
+    items[1].explanation,
+    "Not in our table. AI estimate: 40 kcal per 100g x 35 g = 14 kcal. You can edit this."
+  );
+  assert.deepEqual(totals, { calories: 282.2, protein_g: 6.3, fat_g: 12.2, carbs_g: 37.5, unknownCount: 0 });
+  // Only the unmatched item is sent for an estimate.
+  assert.match(promptOf(calls[1]), /"name":"Tomato chutney"/);
+  assert.doesNotMatch(promptOf(calls[1]), /Paratha/);
+});
+
+test("analyze: falls back to search ranking when pickMatches throws", async () => {
+  const { create } = fakeCreate([
+    apiError(400, "invalid_argument"), // pickMatches
+    json({ estimates: [{ index: 0, calories: 40, protein_g: 1, fat_g: 0.5, carbs_g: 8 }] }),
+  ]);
+
+  const { items, totals } = await analyzeItems(
+    [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
+    { search, gemini: { create, sleep, now } }
+  );
+
+  // Search's top row, not confident: it's only 0.033 ahead of the next one.
+  assert.equal(items[0].source, "search");
+  assert.equal(items[0].kind, "table");
+  assert.equal(items[0].name, "Dal parantha/paratha");
+  assert.equal(items[0].confident, false);
+  // No search results, so it still gets an AI estimate.
+  assert.equal(items[1].kind, "estimated");
+  assert.equal(items[1].source, "search");
+  assert.equal(totals.unknownCount, 0);
+  assert.ok(warnings.some((w) => /analyze: pickMatches failed, using search ranking/.test(w)));
+});
+
+test("analyze: leaves items unknown when estimateNutrition throws", async () => {
+  const { create } = fakeCreate([
+    json({ picks: [{ index: 0, foodId: 2 }] }),
+    apiError(400, "invalid_argument"), // estimateNutrition
+  ]);
+
+  const { items, totals } = await analyzeItems(
+    [{ name: "Paratha", grams: 90 }, { name: "Tomato chutney", grams: 35 }],
+    { search, gemini: { create, sleep, now } }
+  );
+
+  assert.equal(items[0].kind, "table");
+  assert.deepEqual(items[1], {
+    detected: "Tomato chutney",
+    grams: 35,
+    source: "ai",
+    alternatives: [],
+    kind: "unknown",
+    confident: false,
+    foodId: null,
+    name: null,
+    per100g: null,
+    nutrition: null,
+    explanation: "We couldn't match or estimate this. Please pick a food or enter it.",
+  });
+  // Totals cover only the table item.
+  assert.deepEqual(totals, { calories: 268.2, protein_g: 5.9, fat_g: 12, carbs_g: 34.7, unknownCount: 1 });
+  assert.ok(warnings.some((w) => /analyze: estimateNutrition failed, leaving items unknown/.test(w)));
 });
