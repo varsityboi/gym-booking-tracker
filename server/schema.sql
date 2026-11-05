@@ -72,6 +72,28 @@ CREATE TABLE IF NOT EXISTS meal_items (
 );
 CREATE INDEX IF NOT EXISTS idx_meal_items_meal ON meal_items (meal_id);
 
+-- A meal item is either a row from foods (food_id) or an AI-estimated food
+-- that isn't in the table (custom_name + est_* values per 100 g).
+ALTER TABLE meal_items ALTER COLUMN food_id DROP NOT NULL;
+ALTER TABLE meal_items
+  ADD COLUMN IF NOT EXISTS custom_name TEXT,
+  ADD COLUMN IF NOT EXISTS est_calories_per_100g NUMERIC(7,2) CHECK (est_calories_per_100g >= 0),
+  ADD COLUMN IF NOT EXISTS est_protein_per_100g NUMERIC(6,2) CHECK (est_protein_per_100g >= 0),
+  ADD COLUMN IF NOT EXISTS est_fat_per_100g NUMERIC(6,2) CHECK (est_fat_per_100g >= 0),
+  ADD COLUMN IF NOT EXISTS est_carbs_per_100g NUMERIC(6,2) CHECK (est_carbs_per_100g >= 0);
+ALTER TABLE meal_items DROP CONSTRAINT IF EXISTS meal_items_food_or_estimate;
+ALTER TABLE meal_items ADD CONSTRAINT meal_items_food_or_estimate CHECK (
+  (food_id IS NOT NULL
+    AND custom_name IS NULL
+    AND est_calories_per_100g IS NULL AND est_protein_per_100g IS NULL
+    AND est_fat_per_100g IS NULL AND est_carbs_per_100g IS NULL)
+  OR
+  (food_id IS NULL
+    AND custom_name IS NOT NULL
+    AND est_calories_per_100g IS NOT NULL AND est_protein_per_100g IS NOT NULL
+    AND est_fat_per_100g IS NOT NULL AND est_carbs_per_100g IS NOT NULL)
+);
+
 CREATE TABLE IF NOT EXISTS water_logs (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id),

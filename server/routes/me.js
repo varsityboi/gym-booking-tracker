@@ -23,15 +23,16 @@ router.get("/today", requireAuth, async (req, res) => {
   const { start_at: startAt, end_at: endAt, date } = bounds.rows[0];
 
   const [totalsResult, waterResult, targetsResult, nextClassResult] = await Promise.all([
+    // Table items take nutrition from foods, estimated items from est_*.
     pool.query(
       `SELECT
-         COALESCE(ROUND(SUM(mi.grams * f.calories_per_100g / 100), 1), 0) AS calories,
-         COALESCE(ROUND(SUM(mi.grams * f.protein_per_100g / 100), 1), 0) AS protein_g,
-         COALESCE(ROUND(SUM(mi.grams * f.fat_per_100g / 100), 1), 0) AS fat_g,
-         COALESCE(ROUND(SUM(mi.grams * f.carbs_per_100g / 100), 1), 0) AS carbs_g
+         COALESCE(ROUND(SUM(mi.grams * COALESCE(f.calories_per_100g, mi.est_calories_per_100g) / 100), 1), 0) AS calories,
+         COALESCE(ROUND(SUM(mi.grams * COALESCE(f.protein_per_100g, mi.est_protein_per_100g) / 100), 1), 0) AS protein_g,
+         COALESCE(ROUND(SUM(mi.grams * COALESCE(f.fat_per_100g, mi.est_fat_per_100g) / 100), 1), 0) AS fat_g,
+         COALESCE(ROUND(SUM(mi.grams * COALESCE(f.carbs_per_100g, mi.est_carbs_per_100g) / 100), 1), 0) AS carbs_g
        FROM meals m
        JOIN meal_items mi ON mi.meal_id = m.id
-       JOIN foods f ON f.id = mi.food_id
+       LEFT JOIN foods f ON f.id = mi.food_id
        WHERE m.user_id = $1 AND m.eaten_at >= $2 AND m.eaten_at < $3`,
       [userId, startAt, endAt]
     ),

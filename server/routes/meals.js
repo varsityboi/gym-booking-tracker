@@ -9,6 +9,13 @@ const router = Router();
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
+// Confident only when the top match is strong and clearly ahead of the runner-up.
+const combined = (r) => r.score + r.full;
+const isConfident = (top, second) =>
+  Boolean(top) &&
+  top.score >= 0.8 &&
+  (!second || combined(top) - combined(second) >= 0.1);
+
 const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
 const upload = multer({
@@ -50,7 +57,7 @@ router.post("/analyze", requireAuth, upload.single("photo"), async (req, res) =>
               carbs_g: per(top.carbs_per_100g),
             }
           : null,
-        confident: top ? top.score >= 0.8 : false,
+        confident: isConfident(top, rest[0]),
         alternatives: rest.map((r) => ({ foodId: r.id, name: r.name })),
       };
     })
@@ -72,25 +79,42 @@ router.post("/", requireAuth, validate(createMealSchema), async (req, res) => {
     );
     const mealId = meal.rows[0].id;
 
-    // One meal_items row per item, inserted in a single statement, then joined
-    // to foods so each row comes back with its name and computed nutrition.
+    // One meal_items row per item, inserted in a single statement. Table items
+    // set food_id; estimated items set custom_name and the est_* columns (the
+    // other side is NULL). Nutrition comes from foods or from est_*, whichever
+    // the row has. unnest keeps the input order, so ins.id follows it too.
+    const est = (i, key) => (i.kind === "estimated" ? i[key] : null);
     const inserted = await client.query(
       `WITH ins AS (
-         INSERT INTO meal_items (meal_id, food_id, grams)
-         SELECT $1, food_id, grams
-         FROM unnest($2::int[], $3::numeric[]) AS t(food_id, grams)
-         RETURNING id, food_id, grams
+         INSERT INTO meal_items (meal_id, food_id, grams, custom_name,
+                                 est_calories_per_100g, est_protein_per_100g,
+                                 est_fat_per_100g, est_carbs_per_100g)
+         SELECT $1, food_id, grams, custom_name, cal, protein, fat, carbs
+         FROM unnest($2::int[], $3::numeric[], $4::text[],
+                     $5::numeric[], $6::numeric[], $7::numeric[], $8::numeric[])
+              AS t(food_id, grams, custom_name, cal, protein, fat, carbs)
+         RETURNING *
        )
-       SELECT f.name,
+       SELECT COALESCE(f.name, ins.custom_name) AS name,
+              CASE WHEN ins.food_id IS NULL THEN 'estimated' ELSE 'table' END AS kind,
               ins.grams,
-              ROUND(ins.grams * f.calories_per_100g / 100, 1) AS calories,
-              ROUND(ins.grams * f.protein_per_100g / 100, 1) AS protein_g,
-              ROUND(ins.grams * f.fat_per_100g / 100, 1) AS fat_g,
-              ROUND(ins.grams * f.carbs_per_100g / 100, 1) AS carbs_g
+              ROUND(ins.grams * COALESCE(f.calories_per_100g, ins.est_calories_per_100g) / 100, 1) AS calories,
+              ROUND(ins.grams * COALESCE(f.protein_per_100g, ins.est_protein_per_100g) / 100, 1) AS protein_g,
+              ROUND(ins.grams * COALESCE(f.fat_per_100g, ins.est_fat_per_100g) / 100, 1) AS fat_g,
+              ROUND(ins.grams * COALESCE(f.carbs_per_100g, ins.est_carbs_per_100g) / 100, 1) AS carbs_g
        FROM ins
-       JOIN foods f ON f.id = ins.food_id
+       LEFT JOIN foods f ON f.id = ins.food_id
        ORDER BY ins.id`,
-      [mealId, items.map((i) => i.foodId), items.map((i) => i.grams)]
+      [
+        mealId,
+        items.map((i) => (i.kind === "table" ? i.foodId : null)),
+        items.map((i) => i.grams),
+        items.map((i) => est(i, "name")),
+        items.map((i) => est(i, "caloriesPer100g")),
+        items.map((i) => est(i, "proteinPer100g")),
+        items.map((i) => est(i, "fatPer100g")),
+        items.map((i) => est(i, "carbsPer100g")),
+      ]
     );
 
     await client.query("COMMIT");
@@ -100,6 +124,7 @@ router.post("/", requireAuth, validate(createMealSchema), async (req, res) => {
       mealId,
       items: inserted.rows.map((r) => ({
         name: r.name,
+        kind: r.kind,
         grams: Number(r.grams),
         calories: Number(r.calories),
         protein_g: Number(r.protein_g),
