@@ -8,32 +8,78 @@ import {
   addItem,
   getMealHistory,
 } from "../models/meal.js";
+import { countTodayForUser, recordAnalysis } from "../models/photoAnalysis.js";
 import { readPlate } from "../services/gemini.js";
 import { analyzeItems } from "../services/analyze.js";
 
-// Reads a plate photo and suggests matching foods. Saves nothing.
-export async function analyze(req, res) {
-  if (!req.file) {
-    return res
-      .status(400)
-      .json({ error: "send a photo (jpeg, png, webp or heic) in the 'photo' field" });
+// Photos a user may have analysed per India day: PHOTO_DAILY_LIMIT (default 30).
+function photoDailyLimit() {
+  const value = Number(process.env.PHOTO_DAILY_LIMIT ?? 30);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`PHOTO_DAILY_LIMIT must be a whole number of at least 1, got "${process.env.PHOTO_DAILY_LIMIT}"`);
   }
-
-  let detectedItems;
-  let visionProvider;
-  try {
-    ({ items: detectedItems, provider: visionProvider } = await readPlate(
-      req.file.buffer,
-      req.file.mimetype
-    ));
-  } catch (err) {
-    console.error(err);
-    return res.status(502).json({ error: "couldn't read the photo, please try again" });
-  }
-
-  // Nothing is saved here; the client confirms or edits, then POSTs /meals.
-  res.json(await analyzeItems(detectedItems, { visionProvider }));
+  return value;
 }
+export const PHOTO_DAILY_LIMIT = photoDailyLimit();
+
+// Builds the analyze handler. Tests pass a fake readPlate/analyzeItems (so no
+// AI is called) and a small daily limit.
+export function makeAnalyzeHandler({
+  readPlate: read = readPlate,
+  analyzeItems: analyzeAll = analyzeItems,
+  dailyLimit = PHOTO_DAILY_LIMIT,
+} = {}) {
+  // Reads a plate photo and suggests matching foods. Saves nothing but the
+  // photo_analyses row that counts toward the daily limit.
+  return async function analyze(req, res) {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ error: "send a photo (jpeg, png, webp or heic) in the 'photo' field" });
+    }
+
+    // A soft quota: the count and the insert below aren't in one transaction,
+    // so two uploads at the same instant can both pass the check and the user
+    // ends up one or two over the limit. That's acceptable here; it only has
+    // to stop runaway use of the AI, not count exactly.
+    if ((await countTodayForUser(req.user.id)) >= dailyLimit) {
+      return res
+        .status(429)
+        .json({ error: `daily photo limit reached (${dailyLimit}), try again tomorrow` });
+    }
+
+    const started = Date.now();
+    let visionProvider = null;
+    const record = (ok) =>
+      recordAnalysis(req.user.id, { visionProvider, durationMs: Date.now() - started, ok });
+
+    let detectedItems;
+    try {
+      ({ items: detectedItems, provider: visionProvider } = await read(
+        req.file.buffer,
+        req.file.mimetype
+      ));
+    } catch (err) {
+      console.error(err);
+      await record(false);
+      return res.status(502).json({ error: "couldn't read the photo, please try again" });
+    }
+
+    let result;
+    try {
+      result = await analyzeAll(detectedItems, { visionProvider });
+    } catch (err) {
+      await record(false);
+      throw err;
+    }
+    await record(true);
+
+    // Nothing else is saved here; the client confirms or edits, then POSTs /meals.
+    res.json(result);
+  };
+}
+
+export const analyze = makeAnalyzeHandler();
 
 export async function create(req, res) {
   const { eatenAt, items } = req.body;

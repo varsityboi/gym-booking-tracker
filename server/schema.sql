@@ -182,3 +182,14 @@ CREATE INDEX IF NOT EXISTS idx_meal_item_events_meal ON meal_item_events (meal_i
 CREATE OR REPLACE TRIGGER meal_item_events_no_change
   BEFORE UPDATE OR DELETE ON meal_item_events
   FOR EACH ROW EXECUTE FUNCTION block_changes();
+
+-- One row per photo analysis (successful or not), for the daily photo limit.
+CREATE TABLE IF NOT EXISTS photo_analyses (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  vision_provider TEXT,
+  duration_ms INT NOT NULL CHECK (duration_ms >= 0),
+  ok BOOLEAN NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_photo_analyses_user_created ON photo_analyses (user_id, created_at);

@@ -18,6 +18,16 @@ info:
 
     **Times** are ISO 8601 timestamps. "Today" and `?date` use India time
     (Asia/Kolkata).
+
+    **Limits.** JSON bodies are limited to 100 kB (413 `request body too
+    large`). Failed logins are limited to 5 per 15 minutes per IP address and
+    email, sign-ups to 10 per hour per IP address, and photo analyses to a
+    daily number per user (default 30); over a limit the API returns 429, and
+    the login and sign-up limits send a `Retry-After` header (seconds).
+
+    **Browsers.** CORS allows only the origins configured in `CLIENT_ORIGIN`
+    (default `http://localhost:5173`), with the `Authorization` and
+    `Content-Type` headers.
 servers:
   - url: http://localhost:3000
 tags:
@@ -67,7 +77,9 @@ paths:
     post:
       tags: [Auth]
       summary: Create an account
-      description: New accounts are members. The email is trimmed and lowercased.
+      description: |
+        New accounts are members. The email is trimmed and lowercased.
+        At most 10 sign-up requests per hour per IP address (429 after that).
       requestBody:
         required: true
         content:
@@ -106,11 +118,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: email already registered }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManySignups" }
         "500": { $ref: "#/components/responses/ServerError" }
   /auth/login:
     post:
       tags: [Auth]
       summary: Log in and get a token
+      description: |
+        At most 5 failed attempts per 15 minutes for each IP address and
+        email; successful logins don't count. After that every attempt, even
+        with the right password, gets 429 until the window ends.
       requestBody:
         required: true
         content:
@@ -152,6 +170,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: wrong email or password }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyLoginAttempts" }
         "500": { $ref: "#/components/responses/ServerError" }
   /auth/me:
     get:
@@ -237,6 +257,7 @@ paths:
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
   /classes/{id}/book:
     post:
@@ -330,6 +351,7 @@ paths:
               examples:
                 cancelled: { value: { error: class was cancelled } }
                 belowBooked: { value: { error: "capacity can't be lower than the number already booked (9)" } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
   /classes/{id}/cancel:
     post:
@@ -410,6 +432,7 @@ paths:
               examples:
                 alreadyCancelled: { value: { error: class is already cancelled } }
                 started: { value: { error: class already started } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
 
   # ---------------------------------------------------------------- Waitlist
@@ -580,6 +603,11 @@ paths:
         failed). If matching or estimating fails, items fall back to search
         ranking (`source: search`) or stay `unknown`; only a failed photo
         reading fails the request (502).
+
+        Each user can have a limited number of photos analysed per India day
+        (`PHOTO_DAILY_LIMIT`, default 30; failed analyses count too). Over it
+        the request is refused with 429 before any AI is called. Two uploads
+        at the same instant can both get through, so the limit is approximate.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -651,6 +679,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: "couldn't read the photo, please try again" }
+        "429": { $ref: "#/components/responses/PhotoLimit" }
         "500": { $ref: "#/components/responses/ServerError" }
   /meals:
     get:
@@ -784,6 +813,7 @@ paths:
                 unknownFood: { value: { error: one of the foods does not exist } }
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
   /meals/{mealId}/items:
     post:
@@ -820,6 +850,7 @@ paths:
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MealNotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
   /meals/{mealId}/items/{itemId}:
     patch:
@@ -887,6 +918,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MealItemNotFound" }
         "409": { $ref: "#/components/responses/StaleItem" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
     delete:
       tags: [Meals]
@@ -937,6 +969,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MealItemNotFound" }
         "409": { $ref: "#/components/responses/StaleItem" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
   /meals/{mealId}/history:
     get:
@@ -1022,6 +1055,7 @@ paths:
                 range: { value: { error: ml must be from 1 to 2000 } }
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
 
   # ----------------------------------------------------------------- Targets
@@ -1084,6 +1118,7 @@ paths:
                 water: { value: { error: water must be from 250 to 8000 ml } }
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500": { $ref: "#/components/responses/ServerError" }
 
   # ---------------------------------------------------------------------- Me
@@ -1219,6 +1254,38 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: meal item not found }
+    BodyTooLarge:
+      description: The JSON body is over 100 kB.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: request body too large }
+    TooManyLoginAttempts:
+      description: Too many failed logins for this IP address and email in the last 15 minutes.
+      headers:
+        Retry-After:
+          description: Seconds until you can try again.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "too many login attempts, try again later" }
+    TooManySignups:
+      description: Too many sign-up requests from this IP address in the last hour.
+      headers:
+        Retry-After:
+          description: Seconds until you can try again.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "too many sign-ups from this address, try again later" }
+    PhotoLimit:
+      description: You've reached today's photo limit (India time). The number in the message is the configured limit.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "daily photo limit reached (30), try again tomorrow" }
     StaleItem:
       description: The `version` you sent isn't the item's current one; someone changed it. Reload it and try again.
       content:

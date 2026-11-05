@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yaml";
+import { corsMiddleware, apiHelmet, docsHelmet } from "./middleware/security.js";
 import authRouter from "./routes/auth.js";
 import classesRouter from "./routes/classes.js";
 import bookingsRouter from "./routes/bookings.js";
@@ -32,12 +33,20 @@ export const openapiSpec = YAML.parse(
 );
 
 const app = express();
-app.use(express.json());
+app.use(apiHelmet);
+app.use(corsMiddleware);
+app.use(express.json({ limit: "100kb" }));
 for (const [path, router] of apiMounts) app.use(path, router);
 
 // API docs: the raw spec and a Swagger UI page.
 app.get("/openapi.json", (req, res) => res.json(openapiSpec));
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));
+app.use(
+  "/docs",
+  docsHelmet,
+  swaggerUi.serve,
+  // No validator badge: it's an image from validator.swagger.io, which the CSP blocks.
+  swaggerUi.setup(openapiSpec, { swaggerOptions: { validatorUrl: null } })
+);
 
 app.use((req, res) => {
   res.status(404).json({ error: "route not found" });
@@ -47,6 +56,9 @@ app.use((err, req, res, next) => {
   console.error(err);
   if (err.type === "entity.parse.failed") {
     return res.status(400).json({ error: "invalid JSON in request body" });
+  }
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({ error: "request body too large" });
   }
   if (err.code === "LIMIT_FILE_SIZE") {
     return res.status(413).json({ error: "photo is too large (max 8 MB)" });

@@ -23,7 +23,7 @@ const router = Router();
 
 const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
-const upload = multer({
+export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => cb(null, PHOTO_TYPES.includes(file.mimetype)),
