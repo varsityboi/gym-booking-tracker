@@ -1,4 +1,4 @@
-import pool from "./db.js";
+import pool from "../config/db.js";
 
 // score = how well the query matches some part of the name (word_similarity).
 // full  = how well the query matches the whole name (similarity).

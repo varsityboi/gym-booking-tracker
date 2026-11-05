@@ -1,5 +1,4 @@
 import express from "express";
-import pool from "./db.js";
 import authRouter from "./routes/auth.js";
 import classesRouter from "./routes/classes.js";
 import bookingsRouter from "./routes/bookings.js";
@@ -8,6 +7,7 @@ import foodRoutes from "./routes/foods.js";
 import waterRoutes from "./routes/water.js";
 import targetRoutes from "./routes/targets.js";
 import meRoutes from "./routes/me.js";
+import healthRoutes from "./routes/health.js";
 const app = express();
 app.use(express.json());
 const PORT = 3000;
@@ -16,15 +16,7 @@ app.use("/foods", foodRoutes);
 app.use("/water", waterRoutes);
 app.use("/targets", targetRoutes);
 app.use("/me", meRoutes);
-app.get("/", (req, res) => {
-  res.send("Gym API is running");
-});
-
-app.get("/db-test", async (req, res) => {
-  const result = await pool.query("SELECT NOW()");
-  res.send(result.rows[0]);
-});
-
+app.use("/", healthRoutes);
 app.use("/auth", authRouter);
 app.use("/classes", classesRouter);
 app.use("/bookings", bookingsRouter);

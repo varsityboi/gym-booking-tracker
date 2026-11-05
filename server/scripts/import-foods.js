@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import pool from "./db.js";
+import pool from "../config/db.js";
 
 const workbook = new ExcelJS.Workbook();
 await workbook.xlsx.readFile("data/INDB.xlsx");

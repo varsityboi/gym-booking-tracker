@@ -1,8 +1,8 @@
 import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
-import { readPlate, pickMatches, estimateNutrition, parseChain } from "./gemini.js";
-import { analyzeItems } from "./analyze.js";
+import { readPlate, pickMatches, estimateNutrition, parseChain } from "../services/gemini.js";
+import { analyzeItems } from "../services/analyze.js";
 
 const image = Buffer.from("fake image");
 const okInteraction = {

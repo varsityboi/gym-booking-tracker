@@ -1,16 +1,10 @@
 import { Router } from "express";
-import pool from "../db.js";
-import { requireAuth } from "../auth.js";
-import { validate, waterSchema } from "../validate.js";
+import { requireAuth } from "../middleware/auth.js";
+import { validate, waterSchema } from "../middleware/validate.js";
+import { add } from "../controllers/water.js";
 
 const router = Router();
 
-router.post("/", requireAuth, validate(waterSchema), async (req, res) => {
-  const result = await pool.query(
-    "INSERT INTO water_logs (user_id, ml) VALUES ($1, $2) RETURNING id, ml, logged_at",
-    [req.user.id, req.body.ml]
-  );
-  res.status(201).json(result.rows[0]);
-});
+router.post("/", requireAuth, validate(waterSchema), add);
 
 export default router;
