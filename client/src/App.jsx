@@ -2,8 +2,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { isLoggedIn } from "./auth.js";
 import Layout from "./components/Layout.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
-import AuthPlaceholder from "./pages/AuthPlaceholder.jsx";
+import GuestOnly from "./components/GuestOnly.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
+import SignupPage from "./pages/SignupPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
 
 // "/" and unknown paths: /today when logged in, /login otherwise.
@@ -14,14 +16,10 @@ function HomeRedirect() {
 export default function App() {
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={<AuthPlaceholder title="Log in" otherLink={{ to: "/signup", label: "Create an account" }} />}
-      />
-      <Route
-        path="/signup"
-        element={<AuthPlaceholder title="Sign up" otherLink={{ to: "/login", label: "I already have an account" }} />}
-      />
+      <Route element={<GuestOnly />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+      </Route>
       {/* TEMPORARY: checks the API connection; remove with StatusPage. */}
       <Route path="/status" element={<StatusPage />} />
 
