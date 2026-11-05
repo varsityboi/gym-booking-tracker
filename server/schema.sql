@@ -39,9 +39,10 @@ CREATE TABLE IF NOT EXISTS booking_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Shared by the append-only tables (booking_events, meal_item_events).
 CREATE OR REPLACE FUNCTION block_changes() RETURNS trigger AS $$
 BEGIN
-  RAISE EXCEPTION 'booking_events is append-only';
+  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -154,3 +155,30 @@ ALTER TABLE classes DROP CONSTRAINT IF EXISTS classes_status_check;
 ALTER TABLE classes ADD CONSTRAINT classes_status_check CHECK (status IN ('scheduled', 'cancelled'));
 ALTER TABLE classes ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 ALTER TABLE classes ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+
+-- Meal history and versioned edits. Items are never deleted: deleted_at marks
+-- them removed, version goes up on every change, and meal_item_events keeps
+-- every state (snapshots of the item row before and after the change).
+ALTER TABLE meal_items ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
+ALTER TABLE meal_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS meal_item_events (
+  id SERIAL PRIMARY KEY,
+  meal_item_id INT NOT NULL REFERENCES meal_items(id),
+  meal_id INT NOT NULL REFERENCES meals(id),
+  user_id INT NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL CHECK (action IN ('created', 'edited', 'removed')),
+  before JSONB,
+  after JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT meal_item_events_snapshots CHECK (
+    (action = 'created' AND before IS NULL AND after IS NOT NULL)
+    OR (action = 'edited' AND before IS NOT NULL AND after IS NOT NULL)
+    OR (action = 'removed' AND before IS NOT NULL AND after IS NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_meal_item_events_meal ON meal_item_events (meal_id, id);
+
+CREATE OR REPLACE TRIGGER meal_item_events_no_change
+  BEFORE UPDATE OR DELETE ON meal_item_events
+  FOR EACH ROW EXECUTE FUNCTION block_changes();

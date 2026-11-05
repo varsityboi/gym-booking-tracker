@@ -11,6 +11,19 @@ export function validate(schema) {
   };
 }
 
+// Like validate, for the query string. Express 5's req.query can't be
+// reassigned, so the parsed result goes in req.validatedQuery.
+export function validateQuery(schema) {
+  return (req, res, next) => {
+    const result = schema.safeParse(req.query ?? {});
+    if (!result.success) {
+      return res.status(400).json({ error: result.error.issues[0].message });
+    }
+    req.validatedQuery = result.data;
+    next();
+  };
+}
+
 export const signupSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(100),
   email: z.string().trim().toLowerCase().email("invalid email"),
@@ -119,3 +132,65 @@ export const targetsSchema = z.object({
   carbsG: z.number().int().min(0).max(1000, "carbs must be at most 1000g"),
   waterMl: z.number().int().min(250, "water must be from 250 to 8000 ml").max(8000, "water must be from 250 to 8000 ml"),
 });
+
+// One item added to an existing meal: same rules as an item in createMealSchema.
+export const addMealItemSchema = mealItemSchema;
+
+// GET /meals?date=YYYY-MM-DD (India date); no date means today.
+export const mealsDayQuerySchema = z.object({
+  date: z
+    .string({ message: "date must be YYYY-MM-DD" })
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD")
+    .refine((d) => {
+      const parsed = new Date(`${d}T00:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
+    }, "date must be a real date")
+    .optional(),
+});
+
+const versionSchema = z
+  .number({ message: "version is required" })
+  .int("version must be a whole number")
+  .positive("version must be a whole number");
+
+const ESTIMATE_FIELDS = ["name", "caloriesPer100g", "proteinPer100g", "fatPer100g", "carbsPer100g"];
+
+// PATCH an item: version plus any of grams, foodId (switch to a table food),
+// or all five estimate fields (switch to, or edit, an estimate).
+export const editMealItemSchema = z
+  .object({
+    version: versionSchema,
+    grams: gramsSchema.optional(),
+    foodId: tableItemSchema.shape.foodId.optional(),
+    name: estimatedItemSchema.shape.name.optional(),
+    caloriesPer100g: per100g("caloriesPer100g", 900).optional(),
+    proteinPer100g: per100g("proteinPer100g", 100).optional(),
+    fatPer100g: per100g("fatPer100g", 100).optional(),
+    carbsPer100g: per100g("carbsPer100g", 100).optional(),
+  })
+  .superRefine((body, ctx) => {
+    const given = ESTIMATE_FIELDS.filter((f) => body[f] !== undefined);
+    if (given.length > 0 && given.length < ESTIMATE_FIELDS.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "an estimate needs name, caloriesPer100g, proteinPer100g, fatPer100g and carbsPer100g",
+      });
+    }
+    if (given.length > 0 && body.foodId !== undefined) {
+      ctx.addIssue({ code: "custom", message: "send either foodId or an estimate, not both" });
+    }
+    if (body.grams === undefined && body.foodId === undefined && given.length === 0) {
+      ctx.addIssue({ code: "custom", message: "nothing to change: send grams, foodId or an estimate" });
+    }
+    if (
+      given.length === ESTIMATE_FIELDS.length &&
+      body.proteinPer100g + body.fatPer100g + body.carbsPer100g > 100
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "protein + fat + carbs can't be more than 100 g per 100 g",
+      });
+    }
+  });
+
+export const removeMealItemSchema = z.object({ version: versionSchema });
