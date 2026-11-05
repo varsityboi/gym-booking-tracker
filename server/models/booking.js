@@ -3,28 +3,34 @@ import { lockClass, promoteFromWaitlist } from "./waitlist.js";
 
 // Takes a seat and records the booking in one transaction.
 // Returns { booking, class }, or { error: "full" } when the class is full (the
-// user can join the waitlist), or { error: "unavailable" } when it already
-// started or doesn't exist. Other errors are thrown after ROLLBACK (23505
-// when the user already has an active booking for this class).
+// user can join the waitlist), { error: "cancelled" } when it was cancelled,
+// or { error: "unavailable" } when it already started or doesn't exist.
+// Other errors are thrown after ROLLBACK (23505 when the user already has an
+// active booking for this class).
 export async function bookClass(classId, userId) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     const seat = await client.query(
+      // This UPDATE is the class lock here. If a cancel holds it, we wait, and
+      // the WHERE is re-checked against the cancelled row, so no seat is taken.
       `UPDATE classes SET booked = booked + 1
-       WHERE id = $1 AND booked < capacity AND starts_at > NOW()
+       WHERE id = $1 AND status = 'scheduled' AND booked < capacity AND starts_at > NOW()
        RETURNING id, title, starts_at, capacity, booked`,
       [classId]
     );
 
     if (seat.rowCount === 0) {
       const cls = await client.query(
-        "SELECT 1 FROM classes WHERE id = $1 AND starts_at > NOW() AND booked >= capacity",
+        `SELECT status = 'cancelled' AS cancelled,
+                starts_at > NOW() AND booked >= capacity AS full
+         FROM classes WHERE id = $1`,
         [classId]
       );
       await client.query("ROLLBACK");
-      return { error: cls.rowCount > 0 ? "full" : "unavailable" };
+      const row = cls.rows[0];
+      return { error: row?.cancelled ? "cancelled" : row?.full ? "full" : "unavailable" };
     }
 
     const booking = await client.query(
@@ -87,7 +93,7 @@ export async function cancelBooking(bookingId, userId) {
       [booking.rows[0].id, userId, booking.rows[0].class_id]
     );
 
-    const [promotedUserId = null] = cls.started
+    const [promotedUserId = null] = cls.started || cls.status === "cancelled"
       ? []
       : await promoteFromWaitlist(client, cls.id, 1);
     if (promotedUserId === null) {
@@ -109,7 +115,8 @@ export async function listUpcomingForUser(userId) {
     `SELECT b.id, b.class_id, c.title, c.starts_at
      FROM bookings b
      JOIN classes c ON c.id = b.class_id
-     WHERE b.user_id = $1 AND b.status = 'active' AND c.starts_at > NOW()
+     WHERE b.user_id = $1 AND b.status = 'active' AND c.status = 'scheduled'
+       AND c.starts_at > NOW()
      ORDER BY c.starts_at`,
     [userId]
   );
@@ -122,7 +129,8 @@ export async function findNextForUser(userId) {
     `SELECT b.id AS booking_id, b.class_id, c.title, c.starts_at
      FROM bookings b
      JOIN classes c ON c.id = b.class_id
-     WHERE b.user_id = $1 AND b.status = 'active' AND c.starts_at > NOW()
+     WHERE b.user_id = $1 AND b.status = 'active' AND c.status = 'scheduled'
+       AND c.starts_at > NOW()
      ORDER BY c.starts_at
      LIMIT 1`,
     [userId]

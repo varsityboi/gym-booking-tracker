@@ -1,6 +1,11 @@
 import express from "express";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
-import { validate, createClassSchema, updateCapacitySchema } from "../middleware/validate.js";
+import {
+  validate,
+  createClassSchema,
+  updateCapacitySchema,
+  cancelClassSchema,
+} from "../middleware/validate.js";
 import {
   create,
   list,
@@ -8,6 +13,7 @@ import {
   setCapacity,
   joinWaitlistForClass,
   leaveWaitlistForClass,
+  cancel,
 } from "../controllers/classes.js";
 
 const router = express.Router();
@@ -18,5 +24,6 @@ router.post("/:id/book", requireAuth, book);
 router.patch("/:id/capacity", requireAuth, requireAdmin, validate(updateCapacitySchema), setCapacity);
 router.post("/:id/waitlist", requireAuth, joinWaitlistForClass);
 router.post("/:id/waitlist/leave", requireAuth, leaveWaitlistForClass);
+router.post("/:id/cancel", requireAuth, requireAdmin, validate(cancelClassSchema), cancel);
 
 export default router;

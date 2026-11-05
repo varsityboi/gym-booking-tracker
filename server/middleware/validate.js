@@ -34,6 +34,15 @@ export const createClassSchema = z.object({
     .max(200, "capacity must be from 1 to 200"),
 });
 
+export const cancelClassSchema = z.object({
+  reason: z
+    .string({ message: "reason must be text" })
+    .trim()
+    .min(1, "reason must be 1 to 200 characters")
+    .max(200, "reason must be 1 to 200 characters")
+    .optional(),
+});
+
 export const updateCapacitySchema = z.object({
   capacity: z
     .number({ message: "capacity must be a number" })

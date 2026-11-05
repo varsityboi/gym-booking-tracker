@@ -1,6 +1,8 @@
-import { createClass, listNextSevenDays, updateCapacity } from "../models/class.js";
+import { createClass, listNextSevenDays, updateCapacity, cancelClass } from "../models/class.js";
 import { bookClass } from "../models/booking.js";
 import { joinWaitlist, leaveWaitlist } from "../models/waitlist.js";
+
+const CLASS_CANCELLED = "class was cancelled";
 
 // The class id from the URL, or null (after sending 400) when it's invalid.
 function classIdFrom(req, res) {
@@ -30,6 +32,9 @@ export async function book(req, res) {
     if (result.error === "full") {
       return res.status(409).json({ error: "class is full, you can join the waitlist" });
     }
+    if (result.error === "cancelled") {
+      return res.status(409).json({ error: CLASS_CANCELLED });
+    }
     if (result.error) {
       return res.status(409).json({ error: "class is full, already started, or does not exist" });
     }
@@ -53,6 +58,9 @@ export async function setCapacity(req, res) {
   if (result.error === "not_found") {
     return res.status(404).json({ error: "class not found" });
   }
+  if (result.error === "cancelled") {
+    return res.status(409).json({ error: CLASS_CANCELLED });
+  }
   if (result.error === "below_booked") {
     return res.status(409).json({
       error: `capacity can't be lower than the number already booked (${result.booked})`,
@@ -64,6 +72,7 @@ export async function setCapacity(req, res) {
 
 const JOIN_ERRORS = {
   not_found: [404, "class not found"],
+  cancelled: [409, CLASS_CANCELLED],
   started: [409, "class already started"],
   has_places: [409, "class has free places, book it instead"],
   booked: [409, "you already booked this class"],
@@ -99,4 +108,22 @@ export async function leaveWaitlistForClass(req, res) {
     return res.status(404).json({ error: "you are not on the waitlist for this class" });
   }
   res.json({ entry });
+}
+
+const CANCEL_ERRORS = {
+  not_found: [404, "class not found"],
+  already_cancelled: [409, "class is already cancelled"],
+  started: [409, "class already started"],
+};
+
+export async function cancel(req, res) {
+  const classId = classIdFrom(req, res);
+  if (classId === null) return;
+
+  const result = await cancelClass(classId, req.body.reason);
+  if (result.error) {
+    const [status, error] = CANCEL_ERRORS[result.error];
+    return res.status(status).json({ error });
+  }
+  res.json(result);
 }

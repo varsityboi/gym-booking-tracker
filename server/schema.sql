@@ -135,11 +135,22 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_class_status_created
 -- ALTER TABLE doesn't fire the append-only row trigger, which stays as is.
 ALTER TABLE booking_events ADD COLUMN IF NOT EXISTS waitlist_id INT REFERENCES waitlist(id);
 ALTER TABLE booking_events ALTER COLUMN booking_id DROP NOT NULL;
+-- The full list of actions lives here (class cancellation below adds
+-- 'class_cancelled'); keep it in one place so a re-run never re-adds a shorter
+-- list that existing rows would fail.
 ALTER TABLE booking_events DROP CONSTRAINT IF EXISTS booking_events_action_check;
 ALTER TABLE booking_events ADD CONSTRAINT booking_events_action_check CHECK (
-  action IN ('booked', 'cancelled', 'waitlisted', 'promoted', 'left_waitlist')
+  action IN ('booked', 'cancelled', 'waitlisted', 'promoted', 'left_waitlist', 'class_cancelled')
 );
 ALTER TABLE booking_events DROP CONSTRAINT IF EXISTS booking_events_booking_or_waitlist;
 ALTER TABLE booking_events ADD CONSTRAINT booking_events_booking_or_waitlist CHECK (
   booking_id IS NOT NULL OR waitlist_id IS NOT NULL
 );
+
+-- Admin class cancellation. A cancelled class keeps its row (bookings and
+-- events reference it); 'class_cancelled' events are allowed above.
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'scheduled';
+ALTER TABLE classes DROP CONSTRAINT IF EXISTS classes_status_check;
+ALTER TABLE classes ADD CONSTRAINT classes_status_check CHECK (status IN ('scheduled', 'cancelled'));
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE classes ADD COLUMN IF NOT EXISTS cancel_reason TEXT;

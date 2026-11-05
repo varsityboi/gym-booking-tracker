@@ -9,10 +9,12 @@ const POSITION_SQL = `(
 )`;
 
 // Locks the class row so every booking/waitlist change for a class runs one
-// at a time. Returns the class, or undefined when it doesn't exist.
+// at a time. Returns the class (with status and started), or undefined when it
+// doesn't exist. Callers check status while holding the lock.
 export async function lockClass(client, classId) {
   const result = await client.query(
-    "SELECT id, starts_at, capacity, booked, starts_at <= NOW() AS started FROM classes WHERE id = $1 FOR UPDATE",
+    `SELECT id, status, starts_at, capacity, booked, starts_at <= NOW() AS started
+     FROM classes WHERE id = $1 FOR UPDATE`,
     [classId]
   );
   return result.rows[0];
@@ -63,7 +65,7 @@ export async function promoteFromWaitlist(client, classId, count) {
 
 // Joins the waitlist of a full class in one transaction.
 // Returns { entry, position }, or { error } with one of: "not_found",
-// "started", "has_places", "booked", "waiting".
+// "cancelled", "started", "has_places", "booked", "waiting".
 export async function joinWaitlist(classId, userId) {
   const client = await pool.connect();
   try {
@@ -72,6 +74,7 @@ export async function joinWaitlist(classId, userId) {
     const cls = await lockClass(client, classId);
     let error;
     if (!cls) error = "not_found";
+    else if (cls.status === "cancelled") error = "cancelled";
     else if (cls.started) error = "started";
     else if (cls.booked < cls.capacity) error = "has_places";
     else {
@@ -163,7 +166,8 @@ export async function listWaitingForUser(userId) {
     `SELECT w.id, w.class_id, c.title, c.starts_at, ${POSITION_SQL} AS position
      FROM waitlist w
      JOIN classes c ON c.id = w.class_id
-     WHERE w.user_id = $1 AND w.status = 'waiting' AND c.starts_at > NOW()
+     WHERE w.user_id = $1 AND w.status = 'waiting' AND c.status = 'scheduled'
+       AND c.starts_at > NOW()
      ORDER BY c.starts_at, w.id`,
     [userId]
   );
