@@ -1,0 +1,1533 @@
+openapi: 3.1.0
+info:
+  title: Gym API
+  version: 1.0.0
+  description: |
+    Gym classes, bookings and waitlists, plus meal, water and nutrition tracking.
+
+    **Auth.** Log in with `POST /auth/login` and send the token as
+    `Authorization: Bearer <token>` (valid for 7 days). Routes marked with a
+    lock need it; without a token they return 401 `login required`, with a bad
+    or expired one 401 `invalid or expired token`.
+
+    **Errors.** Every error is `{ "error": "<message>" }`. Request bodies are
+    checked in this order: invalid JSON (400 `invalid JSON in request body`),
+    then the body's own rules (400 with the first problem found), then path
+    ids, then the database. Unknown routes return 404 `route not found`; an
+    unexpected failure returns 500 `something went wrong`.
+
+    **Times** are ISO 8601 timestamps. "Today" and `?date` use India time
+    (Asia/Kolkata).
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Auth
+  - name: Classes
+  - name: Waitlist
+  - name: Bookings
+  - name: Meals
+  - name: Water
+  - name: Targets
+  - name: Me
+  - name: Foods
+  - name: Health
+
+paths:
+  # ------------------------------------------------------------------ Health
+  /:
+    get:
+      tags: [Health]
+      summary: Check the API is up
+      responses:
+        "200":
+          description: Plain text.
+          content:
+            text/html:
+              schema: { type: string }
+              example: Gym API is running
+  /db-test:
+    get:
+      tags: [Health]
+      summary: Check the database connection
+      responses:
+        "200":
+          description: The database's current time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [now]
+                properties:
+                  now: { type: string, format: date-time }
+              example: { now: "2026-11-06T09:12:44.512Z" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # -------------------------------------------------------------------- Auth
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      description: New accounts are members. The email is trimmed and lowercased.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100, description: Trimmed. }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 72 }
+            example: { name: Asha, email: asha@example.com, password: correct-horse }
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              example: { id: 12, name: Asha, email: asha@example.com, role: member }
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missingField: { value: { error: "Invalid input: expected string, received undefined" } }
+                name: { value: { error: name is required } }
+                nameTooLong: { value: { error: "Too big: expected string to have <=100 characters" } }
+                email: { value: { error: invalid email } }
+                passwordShort: { value: { error: password must be at least 8 characters } }
+                passwordLong: { value: { error: "Too big: expected string to have <=72 characters" } }
+                json: { value: { error: invalid JSON in request body } }
+        "409":
+          description: The email is taken.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: email already registered }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and get a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, description: Trimmed and lowercased. }
+                password: { type: string, minLength: 1 }
+            example: { email: asha@example.com, password: correct-horse }
+      responses:
+        "200":
+          description: Logged in. The token is a JWT valid for 7 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTIsInJvbGUiOiJtZW1iZXIifQ.signature
+                user: { id: 12, name: Asha, email: asha@example.com, role: member }
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missingField: { value: { error: "Invalid input: expected string, received undefined" } }
+                email: { value: { error: invalid email } }
+                password: { value: { error: password is required } }
+                json: { value: { error: invalid JSON in request body } }
+        "401":
+          description: No account with that email, or the password doesn't match.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: wrong email or password }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: The logged-in user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              example: { id: 12, name: Asha, email: asha@example.com, role: member }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ----------------------------------------------------------------- Classes
+  /classes:
+    get:
+      tags: [Classes]
+      summary: Upcoming classes in the next 7 days
+      description: Scheduled classes starting from now up to 7 days ahead, soonest first. Cancelled classes are left out.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The classes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ClassWithPlaces" }
+              example:
+                - { id: 7, title: Morning yoga, starts_at: "2026-11-07T01:30:00.000Z", capacity: 12, booked: 9, places_left: 3 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Classes]
+      summary: Create a class (admin only)
+      description: "**Admin only.** Members get 403."
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, startsAt, capacity]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 100, description: Trimmed. }
+                startsAt: { type: string, format: date-time, description: Must be in the future. }
+                capacity: { type: integer, minimum: 1, maximum: 200 }
+            example: { title: Morning yoga, startsAt: "2026-11-07T01:30:00.000Z", capacity: 12 }
+      responses:
+        "201":
+          description: The new class (every column).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Class" }
+              example:
+                id: 7
+                title: Morning yoga
+                starts_at: "2026-11-07T01:30:00.000Z"
+                capacity: 12
+                booked: 0
+                created_at: "2026-11-06T09:00:00.000Z"
+                status: scheduled
+                cancelled_at: null
+                cancel_reason: null
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missingTitle: { value: { error: "Invalid input: expected string, received undefined" } }
+                title: { value: { error: title is required } }
+                titleTooLong: { value: { error: "Too big: expected string to have <=100 characters" } }
+                startsAt: { value: { error: startsAt must be a valid date } }
+                past: { value: { error: class must start in the future } }
+                capacityType: { value: { error: capacity must be a number } }
+                capacityWhole: { value: { error: capacity must be a whole number } }
+                capacityRange: { value: { error: capacity must be from 1 to 200 } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /classes/{id}/book:
+    post:
+      tags: [Classes]
+      summary: Book a place in a class
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      responses:
+        "201":
+          description: Booked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [booking, class]
+                properties:
+                  booking: { $ref: "#/components/schemas/Booking" }
+                  class:
+                    type: object
+                    required: [id, title, starts_at, capacity, booked]
+                    properties:
+                      id: { type: integer }
+                      title: { type: string }
+                      starts_at: { type: string, format: date-time }
+                      capacity: { type: integer }
+                      booked: { type: integer }
+              example:
+                booking: { id: 31, class_id: 7, status: active, created_at: "2026-11-06T09:05:00.000Z" }
+                class: { id: 7, title: Morning yoga, starts_at: "2026-11-07T01:30:00.000Z", capacity: 12, booked: 10 }
+        "400": { $ref: "#/components/responses/InvalidClassId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The class can't be booked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                full: { value: { error: "class is full, you can join the waitlist" } }
+                cancelled: { value: { error: class was cancelled } }
+                startedOrMissing: { value: { error: "class is full, already started, or does not exist" } }
+                alreadyBooked: { value: { error: you already booked this class } }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /classes/{id}/capacity:
+    patch:
+      tags: [Classes]
+      summary: Change a class's capacity (admin only)
+      description: |
+        **Admin only.** Members get 403.
+
+        If the new capacity leaves free places and the class hasn't started,
+        people on the waitlist are promoted in order to fill them (they get
+        bookings and `booked` goes up), all in the same transaction.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacity]
+              properties:
+                capacity: { type: integer, minimum: 1, maximum: 200 }
+            example: { capacity: 15 }
+      responses:
+        "200":
+          description: The updated class, after any promotions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClassWithPlaces" }
+              example: { id: 7, title: Morning yoga, starts_at: "2026-11-07T01:30:00.000Z", capacity: 15, booked: 14, places_left: 1 }
+        "400":
+          description: Invalid body or class id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                capacityType: { value: { error: capacity must be a number } }
+                capacityWhole: { value: { error: capacity must be a whole number } }
+                capacityRange: { value: { error: capacity must be from 1 to 200 } }
+                id: { value: { error: invalid class id } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/ClassNotFound" }
+        "409":
+          description: The class was cancelled, or the new capacity is below the number already booked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                cancelled: { value: { error: class was cancelled } }
+                belowBooked: { value: { error: "capacity can't be lower than the number already booked (9)" } }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /classes/{id}/cancel:
+    post:
+      tags: [Classes]
+      summary: Cancel a class (admin only)
+      description: |
+        **Admin only.** Members get 403.
+
+        In one transaction: the class becomes `cancelled` (with `cancelled_at`,
+        `cancel_reason` and `booked` 0), every active booking is cancelled and
+        every waiting waitlist entry becomes `left`, each with a
+        `class_cancelled` event. Afterwards the class is hidden from lists and
+        can't be booked, joined or resized.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, description: Optional. Trimmed. }
+            example: { reason: Instructor is ill }
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [class, cancelledBookings, removedWaitlistEntries]
+                properties:
+                  class:
+                    type: object
+                    required: [id, title, starts_at, capacity, booked, status, cancelled_at, cancel_reason]
+                    properties:
+                      id: { type: integer }
+                      title: { type: string }
+                      starts_at: { type: string, format: date-time }
+                      capacity: { type: integer }
+                      booked: { type: integer, const: 0 }
+                      status: { type: string, const: cancelled }
+                      cancelled_at: { type: string, format: date-time }
+                      cancel_reason: { type: [string, "null"] }
+                  cancelledBookings: { type: integer, minimum: 0 }
+                  removedWaitlistEntries: { type: integer, minimum: 0 }
+              example:
+                class:
+                  id: 7
+                  title: Morning yoga
+                  starts_at: "2026-11-07T01:30:00.000Z"
+                  capacity: 12
+                  booked: 0
+                  status: cancelled
+                  cancelled_at: "2026-11-06T09:20:00.000Z"
+                  cancel_reason: Instructor is ill
+                cancelledBookings: 9
+                removedWaitlistEntries: 2
+        "400":
+          description: Invalid reason or class id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                reasonType: { value: { error: reason must be text } }
+                reasonLength: { value: { error: reason must be 1 to 200 characters } }
+                id: { value: { error: invalid class id } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/ClassNotFound" }
+        "409":
+          description: Already cancelled, or already started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                alreadyCancelled: { value: { error: class is already cancelled } }
+                started: { value: { error: class already started } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ---------------------------------------------------------------- Waitlist
+  /classes/{id}/waitlist:
+    post:
+      tags: [Waitlist]
+      summary: Join a full class's waitlist
+      description: |
+        Only for a scheduled class that is full and hasn't started. Places in
+        line go by join time; when a place frees up (a cancel or a capacity
+        raise) the first person in line is booked automatically.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      responses:
+        "201":
+          description: On the waitlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entry, position]
+                properties:
+                  entry: { $ref: "#/components/schemas/WaitlistEntry" }
+                  position: { type: integer, minimum: 1, description: 1-based place in line. }
+              example:
+                entry: { id: 4, class_id: 7, status: waiting, created_at: "2026-11-06T09:10:00.000Z" }
+                position: 2
+        "400": { $ref: "#/components/responses/InvalidClassId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ClassNotFound" }
+        "409":
+          description: Can't join.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                cancelled: { value: { error: class was cancelled } }
+                started: { value: { error: class already started } }
+                hasPlaces: { value: { error: "class has free places, book it instead" } }
+                booked: { value: { error: you already booked this class } }
+                waiting: { value: { error: you are already on the waitlist for this class } }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /classes/{id}/waitlist/leave:
+    post:
+      tags: [Waitlist]
+      summary: Leave a class's waitlist
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      responses:
+        "200":
+          description: Left. The entry is kept with status `left`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entry]
+                properties:
+                  entry: { $ref: "#/components/schemas/WaitlistEntry" }
+              example:
+                entry:
+                  id: 4
+                  class_id: 7
+                  status: left
+                  created_at: "2026-11-06T09:10:00.000Z"
+                  updated_at: "2026-11-06T09:30:00.000Z"
+        "400": { $ref: "#/components/responses/InvalidClassId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No waiting entry for this class.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: you are not on the waitlist for this class }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ---------------------------------------------------------------- Bookings
+  /bookings/mine:
+    get:
+      tags: [Bookings]
+      summary: My upcoming bookings and waitlist entries
+      description: Active bookings and waiting entries for scheduled classes that haven't started, soonest first.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Bookings and waitlist entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookings, waitlist]
+                properties:
+                  bookings:
+                    type: array
+                    items: { $ref: "#/components/schemas/UpcomingBooking" }
+                  waitlist:
+                    type: array
+                    items: { $ref: "#/components/schemas/UpcomingWaitlistEntry" }
+              example:
+                bookings:
+                  - { id: 31, class_id: 7, title: Morning yoga, starts_at: "2026-11-07T01:30:00.000Z" }
+                waitlist:
+                  - { id: 4, class_id: 9, title: Evening HIIT, starts_at: "2026-11-07T13:00:00.000Z", position: 2 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel one of my bookings
+      description: |
+        If the class hasn't started and someone is waiting, the first person in
+        line gets the place (`promotedUserId`) and the class's `booked` stays
+        the same; otherwise `booked` goes down by one.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Booking id.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [booking, promotedUserId]
+                properties:
+                  booking:
+                    type: object
+                    required: [id, class_id, status]
+                    properties:
+                      id: { type: integer }
+                      class_id: { type: integer }
+                      status: { type: string, const: cancelled }
+                  promotedUserId: { type: [integer, "null"] }
+              example:
+                booking: { id: 31, class_id: 7, status: cancelled }
+                promotedUserId: 18
+        "400":
+          description: Invalid booking id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: invalid booking id }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No active booking with that id belongs to you.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: active booking not found }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ------------------------------------------------------------------- Meals
+  /meals/analyze:
+    post:
+      tags: [Meals]
+      summary: Read a plate photo and suggest foods
+      description: |
+        Reads the photo with AI (Gemini, falling back to Groq), matches each
+        dish to the foods table or estimates its nutrition, and returns
+        suggestions with totals. **Nothing is saved**; the client confirms or
+        edits the items and then calls `POST /meals`.
+
+        Items read from a photo by Groq are never `confident`. `providers`
+        says which AI did each step (`null` for a step that didn't run or
+        failed). If matching or estimating fails, items fall back to search
+        ranking (`source: search`) or stay `unknown`; only a failed photo
+        reading fails the request (502).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: One JPEG, PNG, WebP, HEIC or HEIF image, at most 8 MB. Other file types are ignored (and so give the 400 below).
+            encoding:
+              photo:
+                contentType: image/jpeg, image/png, image/webp, image/heic, image/heif
+      responses:
+        "200":
+          description: Suggestions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyzeResponse" }
+              example:
+                items:
+                  - detected: Paratha
+                    grams: 100
+                    source: ai
+                    alternatives:
+                      - { foodId: 91, name: Dal parantha/paratha }
+                      - { foodId: 95, name: Paneer parantha/paratha }
+                    kind: table
+                    confident: true
+                    foodId: 87
+                    name: Plain parantha/paratha
+                    per100g: { calories: 298.3, protein_g: 5.06, fat_g: 16.86, carbs_g: 30.69 }
+                    nutrition: { calories: 298.3, protein_g: 5.1, fat_g: 16.9, carbs_g: 30.7 }
+                    explanation: "Plain parantha/paratha from the nutrition table: 298 kcal per 100g x 100 g = 298.3 kcal"
+                  - detected: Sliced Onion Salad (Pyaaz)
+                    grams: 30
+                    source: ai
+                    alternatives: []
+                    kind: estimated
+                    confident: false
+                    foodId: null
+                    name: null
+                    per100g: { calories: 40, protein_g: 1.1, fat_g: 0.1, carbs_g: 9 }
+                    nutrition: { calories: 12, protein_g: 0.3, fat_g: 0, carbs_g: 2.7 }
+                    explanation: "Not in our table. AI estimate: 40 kcal per 100g x 30 g = 12 kcal. You can edit this."
+                totals: { calories: 310.3, protein_g: 5.4, fat_g: 16.9, carbs_g: 33.4, unknownCount: 0 }
+                providers: { vision: gemini, pick: groq, estimate: groq }
+        "400":
+          description: No usable photo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                noPhoto: { value: { error: "send a photo (jpeg, png, webp or heic) in the 'photo' field" } }
+                wrongField: { value: { error: "send exactly one photo in the 'photo' field" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: The photo is over 8 MB.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: photo is too large (max 8 MB) }
+        "502":
+          description: No AI provider could read the photo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "couldn't read the photo, please try again" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /meals:
+    get:
+      tags: [Meals]
+      summary: My meals for a day
+      description: |
+        Meals eaten on the given India date (default today), oldest first, each
+        with its items (deleted items are left out) and totals, plus totals for
+        the day. Totals are summed before rounding, like `/me/today`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: India date. Defaults to today.
+          schema: { type: string, format: date, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+          example: "2026-11-06"
+      responses:
+        "200":
+          description: The day's meals.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, meals, totals]
+                properties:
+                  date: { type: string, format: date }
+                  meals:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, eaten_at, items, totals]
+                      properties:
+                        id: { type: integer }
+                        eaten_at: { type: string, format: date-time }
+                        items:
+                          type: array
+                          items: { $ref: "#/components/schemas/MealItem" }
+                        totals: { $ref: "#/components/schemas/Nutrition" }
+                  totals: { $ref: "#/components/schemas/Nutrition" }
+              example:
+                date: "2026-11-06"
+                meals:
+                  - id: 41
+                    eaten_at: "2026-11-06T07:45:00.000Z"
+                    items:
+                      - { id: 88, version: 1, kind: table, foodId: 87, name: Plain parantha/paratha, grams: 100, nutrition: { calories: 298.3, protein_g: 5.1, fat_g: 16.9, carbs_g: 30.7 } }
+                      - { id: 89, version: 2, kind: estimated, foodId: null, name: Sliced onion, grams: 30, nutrition: { calories: 12, protein_g: 0.3, fat_g: 0, carbs_g: 2.7 } }
+                    totals: { calories: 310.3, protein_g: 5.4, fat_g: 16.9, carbs_g: 33.4 }
+                totals: { calories: 310.3, protein_g: 5.4, fat_g: 16.9, carbs_g: 33.4 }
+        "400":
+          description: Invalid date.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                format: { value: { error: date must be YYYY-MM-DD } }
+                notADate: { value: { error: date must be a real date } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Meals]
+      summary: Save a meal
+      description: |
+        Saves the meal and its items in one transaction and writes a `created`
+        event for each item. An item with `foodId` is a table item; any other
+        item is an AI-style estimate with nutrition per 100 g.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                eatenAt: { type: string, format: date-time, description: "Optional, defaults to now; can't be in the future." }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 30
+                  items: { $ref: "#/components/schemas/MealItemInput" }
+            example:
+              items:
+                - { foodId: 87, grams: 100 }
+                - { name: Sliced onion, grams: 30, caloriesPer100g: 40, proteinPer100g: 1.1, fatPer100g: 0.1, carbsPer100g: 9 }
+      responses:
+        "201":
+          description: Saved. Items come back in input order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mealId, items]
+                properties:
+                  mealId: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, kind, grams, calories, protein_g, fat_g, carbs_g]
+                      properties:
+                        name: { type: string }
+                        kind: { type: string, enum: [table, estimated] }
+                        grams: { type: number }
+                        calories: { type: number }
+                        protein_g: { type: number }
+                        fat_g: { type: number }
+                        carbs_g: { type: number }
+              example:
+                mealId: 41
+                items:
+                  - { name: Plain parantha/paratha, kind: table, grams: 100, calories: 298.3, protein_g: 5.1, fat_g: 16.9, carbs_g: 30.7 }
+                  - { name: Sliced onion, kind: estimated, grams: 30, calories: 12, protein_g: 0.3, fat_g: 0, carbs_g: 2.7 }
+        "400":
+          description: Invalid body, or a foodId that doesn't exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                noItems: { value: { error: "Invalid input: expected array, received undefined" } }
+                empty: { value: { error: a meal needs at least one food } }
+                tooMany: { value: { error: too many items in one meal } }
+                eatenAt: { value: { error: eatenAt must be a valid date } }
+                future: { value: { error: "eatenAt can't be in the future" } }
+                foodId: { value: { error: invalid foodId } }
+                grams: { value: { error: grams must be more than 0 } }
+                name: { value: { error: name is required } }
+                per100g: { value: { error: caloriesPer100g must be from 0 to 900 } }
+                macros: { value: { error: "protein + fat + carbs can't be more than 100 g per 100 g" } }
+                unknownFood: { value: { error: one of the foods does not exist } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /meals/{mealId}/items:
+    post:
+      tags: [Meals]
+      summary: Add an item to one of my meals
+      description: Same item rules as in `POST /meals`. Writes a `created` event. The new item starts at version 1.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MealId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MealItemInput" }
+            example: { foodId: 87, grams: 50 }
+      responses:
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MealItem" }
+              example: { id: 90, version: 1, kind: table, foodId: 87, name: Plain parantha/paratha, grams: 50, nutrition: { calories: 149.2, protein_g: 2.5, fat_g: 8.4, carbs_g: 15.3 } }
+        "400":
+          description: Invalid body or meal id, or a foodId that doesn't exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                foodId: { value: { error: invalid foodId } }
+                grams: { value: { error: grams must be more than 0 } }
+                name: { value: { error: name is required } }
+                macros: { value: { error: "protein + fat + carbs can't be more than 100 g per 100 g" } }
+                mealId: { value: { error: invalid meal id } }
+                unknownFood: { value: { error: food does not exist } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MealNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /meals/{mealId}/items/{itemId}:
+    patch:
+      tags: [Meals]
+      summary: Edit an item in one of my meals
+      description: |
+        **Versioned.** Send the item's current `version` (from `GET /meals` or
+        the last edit). If someone changed the item since, the version no
+        longer matches and you get 409 `this item changed, reload it`; reload
+        and try again. On success the version goes up by one and an `edited`
+        event records the item before and after.
+
+        Send any of: `grams`; `foodId` to switch to a table food; or all of
+        `name`, `caloriesPer100g`, `proteinPer100g`, `fatPer100g` and
+        `carbsPer100g` to switch to (or edit) an estimate. `foodId` and
+        estimate fields can't be mixed. Grams are kept unless sent.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/MealId" }
+        - { $ref: "#/components/parameters/ItemId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1, description: The version you last saw. }
+                grams: { type: number, exclusiveMinimum: 0, maximum: 5000 }
+                foodId: { type: integer, minimum: 1 }
+                name: { type: string, minLength: 1, maxLength: 100 }
+                caloriesPer100g: { type: number, minimum: 0, maximum: 900 }
+                proteinPer100g: { type: number, minimum: 0, maximum: 100 }
+                fatPer100g: { type: number, minimum: 0, maximum: 100 }
+                carbsPer100g: { type: number, minimum: 0, maximum: 100 }
+            examples:
+              grams: { value: { version: 1, grams: 150 } }
+              toTableFood: { value: { version: 2, foodId: 87 } }
+              toEstimate: { value: { version: 3, name: Homemade paratha, caloriesPer100g: 300, proteinPer100g: 6, fatPer100g: 14, carbsPer100g: 38 } }
+      responses:
+        "200":
+          description: The updated item.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MealItem" }
+              example: { id: 88, version: 2, kind: table, foodId: 87, name: Plain parantha/paratha, grams: 150, nutrition: { calories: 447.5, protein_g: 7.6, fat_g: 25.3, carbs_g: 46 } }
+        "400":
+          description: Invalid body or ids, or a foodId that doesn't exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                version: { value: { error: version is required } }
+                versionWhole: { value: { error: version must be a whole number } }
+                nothing: { value: { error: "nothing to change: send grams, foodId or an estimate" } }
+                both: { value: { error: "send either foodId or an estimate, not both" } }
+                partialEstimate: { value: { error: "an estimate needs name, caloriesPer100g, proteinPer100g, fatPer100g and carbsPer100g" } }
+                macros: { value: { error: "protein + fat + carbs can't be more than 100 g per 100 g" } }
+                grams: { value: { error: grams must be more than 0 } }
+                mealId: { value: { error: invalid meal id } }
+                itemId: { value: { error: invalid item id } }
+                unknownFood: { value: { error: food does not exist } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MealItemNotFound" }
+        "409": { $ref: "#/components/responses/StaleItem" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Meals]
+      summary: Remove an item from one of my meals
+      description: |
+        **Versioned**, like editing: send the current `version` or get 409
+        `this item changed, reload it`. The item is kept but marked deleted
+        (left out of meals and totals), its version goes up by one, and a
+        `removed` event records it.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/MealId" }
+        - { $ref: "#/components/parameters/ItemId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1 }
+            example: { version: 2 }
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, version, deleted_at]
+                properties:
+                  id: { type: integer }
+                  version: { type: integer }
+                  deleted_at: { type: string, format: date-time }
+              example: { id: 89, version: 3, deleted_at: "2026-11-06T10:02:00.000Z" }
+        "400":
+          description: Invalid body or ids.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                version: { value: { error: version is required } }
+                versionWhole: { value: { error: version must be a whole number } }
+                mealId: { value: { error: invalid meal id } }
+                itemId: { value: { error: invalid item id } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MealItemNotFound" }
+        "409": { $ref: "#/components/responses/StaleItem" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /meals/{mealId}/history:
+    get:
+      tags: [Meals]
+      summary: Every change to one of my meals
+      description: All item events for the meal, oldest first. Events are append-only.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MealId" }]
+      responses:
+        "200":
+          description: The meal's events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mealId, events]
+                properties:
+                  mealId: { type: integer }
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/MealItemEvent" }
+              example:
+                mealId: 41
+                events:
+                  - id: 301
+                    meal_item_id: 88
+                    action: created
+                    before: null
+                    after: { version: 1, food_id: 87, custom_name: null, grams: 100, est_calories_per_100g: null, est_protein_per_100g: null, est_fat_per_100g: null, est_carbs_per_100g: null, deleted_at: null }
+                    created_at: "2026-11-06T07:45:00.000Z"
+                  - id: 305
+                    meal_item_id: 88
+                    action: edited
+                    before: { version: 1, food_id: 87, custom_name: null, grams: 100, est_calories_per_100g: null, est_protein_per_100g: null, est_fat_per_100g: null, est_carbs_per_100g: null, deleted_at: null }
+                    after: { version: 2, food_id: 87, custom_name: null, grams: 150, est_calories_per_100g: null, est_protein_per_100g: null, est_fat_per_100g: null, est_carbs_per_100g: null, deleted_at: null }
+                    created_at: "2026-11-06T08:01:00.000Z"
+        "400":
+          description: Invalid meal id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: invalid meal id }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MealNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ------------------------------------------------------------------- Water
+  /water:
+    post:
+      tags: [Water]
+      summary: Log water
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ml: { type: integer, minimum: 1, maximum: 2000, default: 250 }
+            example: { ml: 500 }
+      responses:
+        "201":
+          description: Logged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, ml, logged_at]
+                properties:
+                  id: { type: integer }
+                  ml: { type: integer }
+                  logged_at: { type: string, format: date-time }
+              example: { id: 55, ml: 500, logged_at: "2026-11-06T09:40:00.000Z" }
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                type: { value: { error: ml must be a number } }
+                whole: { value: { error: ml must be a whole number } }
+                range: { value: { error: ml must be from 1 to 2000 } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ----------------------------------------------------------------- Targets
+  /targets:
+    get:
+      tags: [Targets]
+      summary: My daily targets
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The targets, or `null` if none are set.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Targets" }
+                  - { type: "null" }
+              example: { calories: 2000, protein_g: 120, fat_g: 60, carbs_g: 250, water_ml: 3000, updated_at: "2026-11-01T06:00:00.000Z" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      tags: [Targets]
+      summary: Set my daily targets
+      description: Creates or replaces all five targets.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [calories, proteinG, fatG, carbsG, waterMl]
+              properties:
+                calories: { type: integer, minimum: 500, maximum: 6000 }
+                proteinG: { type: integer, minimum: 0, maximum: 500 }
+                fatG: { type: integer, minimum: 0, maximum: 500 }
+                carbsG: { type: integer, minimum: 0, maximum: 1000 }
+                waterMl: { type: integer, minimum: 250, maximum: 8000 }
+            example: { calories: 2000, proteinG: 120, fatG: 60, carbsG: 250, waterMl: 3000 }
+      responses:
+        "200":
+          description: The saved targets.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Targets" }
+              example: { calories: 2000, protein_g: 120, fat_g: 60, carbs_g: 250, water_ml: 3000, updated_at: "2026-11-06T09:45:00.000Z" }
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missing: { value: { error: "Invalid input: expected number, received undefined" } }
+                notWhole: { value: { error: "Invalid input: expected int, received number" } }
+                calories: { value: { error: calories must be from 500 to 6000 } }
+                protein: { value: { error: protein must be at most 500g } }
+                fat: { value: { error: fat must be at most 500g } }
+                carbs: { value: { error: carbs must be at most 1000g } }
+                negative: { value: { error: "Too small: expected number to be >=0" } }
+                water: { value: { error: water must be from 250 to 8000 ml } }
+                json: { value: { error: invalid JSON in request body } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ---------------------------------------------------------------------- Me
+  /me/today:
+    get:
+      tags: [Me]
+      summary: Today's summary
+      description: |
+        Today's (India time) nutrition totals (deleted meal items left out),
+        water, targets, what's left to reach them, and the next upcoming
+        booking (cancelled classes ignored).
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The summary.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Today" }
+              example:
+                date: "2026-11-06"
+                totals: { calories: 1240.5, protein_g: 62.3, fat_g: 41, carbs_g: 150.2 }
+                water_ml: 1750
+                targets: { calories: 2000, protein_g: 120, fat_g: 60, carbs_g: 250, water_ml: 3000 }
+                remaining: { calories: 759.5, protein_g: 57.7, fat_g: 19, carbs_g: 99.8, water_ml: 1250 }
+                next_class: { booking_id: 31, class_id: 7, title: Morning yoga, starts_at: "2026-11-07T01:30:00.000Z" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ------------------------------------------------------------------- Foods
+  /foods/search:
+    get:
+      tags: [Foods]
+      summary: Search the foods table
+      description: Up to 10 foods, best match first (fuzzy matching on the name).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search text, 2 to 100 characters after trimming.
+          schema: { type: string, minLength: 2, maxLength: 100 }
+          example: paratha
+      responses:
+        "200":
+          description: Matching foods.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 10
+                items: { $ref: "#/components/schemas/FoodSearchResult" }
+              example:
+                - { id: 87, name: Plain parantha/paratha, calories_per_100g: 298.3, protein_per_100g: 5.06, fat_per_100g: 16.86, carbs_per_100g: 30.69, score: 1, full: 0.5 }
+        "400":
+          description: Missing or bad `q`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: q must be 2 to 100 characters }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The token from `POST /auth/login`.
+
+  parameters:
+    ClassId:
+      name: id
+      in: path
+      required: true
+      description: Class id.
+      schema: { type: integer, minimum: 1 }
+    MealId:
+      name: mealId
+      in: path
+      required: true
+      description: Meal id. Must be one of your meals.
+      schema: { type: integer, minimum: 1 }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: Meal item id. Must belong to that meal.
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            noToken: { value: { error: login required } }
+            badToken: { value: { error: invalid or expired token } }
+    Forbidden:
+      description: The route is for admins only.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: admins only }
+    ServerError:
+      description: Unexpected failure.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: something went wrong }
+    InvalidClassId:
+      description: The class id isn't a positive whole number.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: invalid class id }
+    ClassNotFound:
+      description: No class with that id.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: class not found }
+    MealNotFound:
+      description: No meal with that id belongs to you.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: meal not found }
+    MealItemNotFound:
+      description: The item doesn't exist, isn't in that meal, isn't yours, or was removed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: meal item not found }
+    StaleItem:
+      description: The `version` you sent isn't the item's current one; someone changed it. Reload it and try again.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "this item changed, reload it" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [member, admin] }
+
+    Class:
+      description: A class row with every column.
+      type: object
+      required: [id, title, starts_at, capacity, booked, created_at, status, cancelled_at, cancel_reason]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+        capacity: { type: integer, minimum: 1, maximum: 200 }
+        booked: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        status: { type: string, enum: [scheduled, cancelled] }
+        cancelled_at: { type: [string, "null"], format: date-time }
+        cancel_reason: { type: [string, "null"] }
+
+    ClassWithPlaces:
+      type: object
+      required: [id, title, starts_at, capacity, booked, places_left]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+        capacity: { type: integer }
+        booked: { type: integer }
+        places_left: { type: integer }
+
+    Booking:
+      type: object
+      required: [id, class_id, status, created_at]
+      properties:
+        id: { type: integer }
+        class_id: { type: integer }
+        status: { type: string, enum: [active, cancelled] }
+        created_at: { type: string, format: date-time }
+
+    UpcomingBooking:
+      type: object
+      required: [id, class_id, title, starts_at]
+      properties:
+        id: { type: integer, description: Booking id. }
+        class_id: { type: integer }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+
+    WaitlistEntry:
+      type: object
+      required: [id, class_id, status, created_at]
+      properties:
+        id: { type: integer }
+        class_id: { type: integer }
+        status: { type: string, enum: [waiting, promoted, left] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: Only in the leave response. }
+
+    UpcomingWaitlistEntry:
+      type: object
+      required: [id, class_id, title, starts_at, position]
+      properties:
+        id: { type: integer, description: Waitlist entry id. }
+        class_id: { type: integer }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+        position: { type: integer, minimum: 1, description: 1-based place in line. }
+
+    Nutrition:
+      type: object
+      required: [calories, protein_g, fat_g, carbs_g]
+      properties:
+        calories: { type: number }
+        protein_g: { type: number }
+        fat_g: { type: number }
+        carbs_g: { type: number }
+
+    MealItemInput:
+      description: An item with `foodId` is a table item; anything else is an estimate.
+      oneOf:
+        - title: Table item
+          type: object
+          required: [foodId, grams]
+          properties:
+            foodId: { type: integer, minimum: 1 }
+            grams: { type: number, exclusiveMinimum: 0, maximum: 5000 }
+        - title: Estimated item
+          description: Nutrition per 100 g; protein + fat + carbs can't be more than 100.
+          type: object
+          required: [name, grams, caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 100, description: Trimmed. }
+            grams: { type: number, exclusiveMinimum: 0, maximum: 5000 }
+            caloriesPer100g: { type: number, minimum: 0, maximum: 900 }
+            proteinPer100g: { type: number, minimum: 0, maximum: 100 }
+            fatPer100g: { type: number, minimum: 0, maximum: 100 }
+            carbsPer100g: { type: number, minimum: 0, maximum: 100 }
+
+    MealItem:
+      description: |
+        A saved meal item. `version` starts at 1 and goes up on every edit;
+        send it back when editing or removing the item.
+      oneOf:
+        - { $ref: "#/components/schemas/TableMealItem" }
+        - { $ref: "#/components/schemas/EstimatedMealItem" }
+      discriminator:
+        propertyName: kind
+        mapping:
+          table: "#/components/schemas/TableMealItem"
+          estimated: "#/components/schemas/EstimatedMealItem"
+
+    TableMealItem:
+      type: object
+      required: [id, version, kind, foodId, name, grams, nutrition]
+      properties:
+        id: { type: integer }
+        version: { type: integer, minimum: 1 }
+        kind: { type: string, const: table }
+        foodId: { type: integer }
+        name: { type: string, description: The food's name from the table. }
+        grams: { type: number }
+        nutrition: { $ref: "#/components/schemas/Nutrition" }
+
+    EstimatedMealItem:
+      type: object
+      required: [id, version, kind, foodId, name, grams, nutrition]
+      properties:
+        id: { type: integer }
+        version: { type: integer, minimum: 1 }
+        kind: { type: string, const: estimated }
+        foodId: { type: "null" }
+        name: { type: string }
+        grams: { type: number }
+        nutrition: { $ref: "#/components/schemas/Nutrition" }
+
+    MealItemSnapshot:
+      description: The stored item row at one moment.
+      type: object
+      required: [version, food_id, custom_name, grams, est_calories_per_100g, est_protein_per_100g, est_fat_per_100g, est_carbs_per_100g, deleted_at]
+      properties:
+        version: { type: integer }
+        food_id: { type: [integer, "null"] }
+        custom_name: { type: [string, "null"] }
+        grams: { type: number }
+        est_calories_per_100g: { type: [number, "null"] }
+        est_protein_per_100g: { type: [number, "null"] }
+        est_fat_per_100g: { type: [number, "null"] }
+        est_carbs_per_100g: { type: [number, "null"] }
+        deleted_at: { type: [string, "null"], format: date-time }
+
+    MealItemEvent:
+      description: "`created` has only `after`, `edited` has both, `removed` has only `before`."
+      type: object
+      required: [id, meal_item_id, action, before, after, created_at]
+      properties:
+        id: { type: integer }
+        meal_item_id: { type: integer }
+        action: { type: string, enum: [created, edited, removed] }
+        before:
+          oneOf:
+            - { $ref: "#/components/schemas/MealItemSnapshot" }
+            - { type: "null" }
+        after:
+          oneOf:
+            - { $ref: "#/components/schemas/MealItemSnapshot" }
+            - { type: "null" }
+        created_at: { type: string, format: date-time }
+
+    AnalyzeItem:
+      type: object
+      required: [detected, grams, source, alternatives, kind, confident, foodId, name, per100g, nutrition, explanation]
+      properties:
+        detected: { type: string, description: The dish name the AI read from the photo. }
+        grams: { type: number, description: The AI's weight estimate. }
+        source:
+          type: string
+          enum: [ai, search]
+          description: "`ai` when the AI picked the match, `search` when that failed and search ranking was used."
+        alternatives:
+          type: array
+          maxItems: 2
+          items:
+            type: object
+            required: [foodId, name]
+            properties:
+              foodId: { type: integer }
+              name: { type: string }
+        kind:
+          type: string
+          enum: [table, estimated, unknown]
+          description: "`table`: matched a food. `estimated`: not in the table, AI estimate. `unknown`: neither worked."
+        confident: { type: boolean, description: Always false for estimates, unknowns and Groq-read photos. }
+        foodId: { type: [integer, "null"] }
+        name: { type: [string, "null"], description: The matched food's name (table items only). }
+        per100g:
+          oneOf:
+            - { $ref: "#/components/schemas/Nutrition" }
+            - { type: "null" }
+        nutrition:
+          oneOf:
+            - { $ref: "#/components/schemas/Nutrition" }
+            - { type: "null" }
+        explanation: { type: string }
+
+    AnalyzeResponse:
+      type: object
+      required: [items, totals, providers]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AnalyzeItem" }
+        totals:
+          allOf:
+            - { $ref: "#/components/schemas/Nutrition" }
+            - type: object
+              required: [unknownCount]
+              properties:
+                unknownCount: { type: integer, minimum: 0, description: Items with no nutrition (left out of the totals). }
+        providers:
+          type: object
+          required: [vision, pick, estimate]
+          description: Which AI did each step; `null` when the step didn't run or failed.
+          properties:
+            vision: { type: [string, "null"], enum: [gemini, groq, null] }
+            pick: { type: [string, "null"], enum: [gemini, groq, null] }
+            estimate: { type: [string, "null"], enum: [gemini, groq, null] }
+
+    Targets:
+      type: object
+      required: [calories, protein_g, fat_g, carbs_g, water_ml, updated_at]
+      properties:
+        calories: { type: integer }
+        protein_g: { type: integer }
+        fat_g: { type: integer }
+        carbs_g: { type: integer }
+        water_ml: { type: integer }
+        updated_at: { type: string, format: date-time }
+
+    Today:
+      type: object
+      required: [date, totals, water_ml, targets, remaining, next_class]
+      properties:
+        date: { type: string, format: date }
+        totals: { $ref: "#/components/schemas/Nutrition" }
+        water_ml: { type: integer }
+        targets:
+          description: "`null` when no targets are set."
+          oneOf:
+            - type: object
+              required: [calories, protein_g, fat_g, carbs_g, water_ml]
+              properties:
+                calories: { type: integer }
+                protein_g: { type: integer }
+                fat_g: { type: integer }
+                carbs_g: { type: integer }
+                water_ml: { type: integer }
+            - { type: "null" }
+        remaining:
+          description: Targets minus today's totals (negative when over); `null` without targets.
+          oneOf:
+            - type: object
+              required: [calories, protein_g, fat_g, carbs_g, water_ml]
+              properties:
+                calories: { type: number }
+                protein_g: { type: number }
+                fat_g: { type: number }
+                carbs_g: { type: number }
+                water_ml: { type: integer }
+            - { type: "null" }
+        next_class:
+          description: The next upcoming active booking in a scheduled class, or `null`.
+          oneOf:
+            - type: object
+              required: [booking_id, class_id, title, starts_at]
+              properties:
+                booking_id: { type: integer }
+                class_id: { type: integer }
+                title: { type: string }
+                starts_at: { type: string, format: date-time }
+            - { type: "null" }
+
+    FoodSearchResult:
+      type: object
+      required: [id, name, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, score, full]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        calories_per_100g: { type: number }
+        protein_per_100g: { type: number }
+        fat_per_100g: { type: number }
+        carbs_per_100g: { type: number }
+        score: { type: number, description: How well the query matches part of the name (0 to 1). }
+        full: { type: number, description: How well the query matches the whole name (0 to 1). }
