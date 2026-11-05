@@ -113,3 +113,33 @@ CREATE TABLE IF NOT EXISTS user_targets (
 );
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_foods_name_trgm ON foods USING gin (name gin_trgm_ops);
+
+-- Class waitlist. One 'waiting' entry per user and class; the oldest waiting
+-- entry (created_at, id) is promoted when a place frees up.
+CREATE TABLE IF NOT EXISTS waitlist (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id),
+  class_id INT NOT NULL REFERENCES classes(id),
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'promoted', 'left')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_waiting_entry
+  ON waitlist (user_id, class_id) WHERE status = 'waiting';
+CREATE INDEX IF NOT EXISTS idx_waitlist_class_status_created
+  ON waitlist (class_id, status, created_at);
+
+-- Waitlist events in booking_events. 'waitlisted' and 'left_waitlist' have no
+-- booking, so booking_id becomes nullable and waitlist_id points at the entry
+-- instead ('promoted' sets both). Every event refers to at least one of them.
+-- ALTER TABLE doesn't fire the append-only row trigger, which stays as is.
+ALTER TABLE booking_events ADD COLUMN IF NOT EXISTS waitlist_id INT REFERENCES waitlist(id);
+ALTER TABLE booking_events ALTER COLUMN booking_id DROP NOT NULL;
+ALTER TABLE booking_events DROP CONSTRAINT IF EXISTS booking_events_action_check;
+ALTER TABLE booking_events ADD CONSTRAINT booking_events_action_check CHECK (
+  action IN ('booked', 'cancelled', 'waitlisted', 'promoted', 'left_waitlist')
+);
+ALTER TABLE booking_events DROP CONSTRAINT IF EXISTS booking_events_booking_or_waitlist;
+ALTER TABLE booking_events ADD CONSTRAINT booking_events_booking_or_waitlist CHECK (
+  booking_id IS NOT NULL OR waitlist_id IS NOT NULL
+);
