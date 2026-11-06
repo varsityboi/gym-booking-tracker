@@ -9,6 +9,7 @@ import MealsPage from "./pages/MealsPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
+import TargetsPage from "./pages/TargetsPage.jsx";
 import TodayPage from "./pages/TodayPage.jsx";
 
 // "/" and unknown paths: /today when logged in, /login otherwise.
@@ -31,7 +32,7 @@ export default function App() {
           <Route path="/today" element={<TodayPage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/meals" element={<MealsPage />} />
-          <Route path="/targets" element={<Placeholder title="Targets" />} />
+          <Route path="/targets" element={<TargetsPage />} />
           <Route element={<RequireAuth role="admin" />}>
             <Route path="/admin" element={<Placeholder title="Admin" />} />
           </Route>
