@@ -5,6 +5,7 @@ import RequireAuth from "./components/RequireAuth.jsx";
 import GuestOnly from "./components/GuestOnly.jsx";
 import ClassesPage from "./pages/ClassesPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import MealsPage from "./pages/MealsPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
@@ -29,7 +30,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/today" element={<TodayPage />} />
           <Route path="/classes" element={<ClassesPage />} />
-          <Route path="/meals" element={<Placeholder title="Meals" />} />
+          <Route path="/meals" element={<MealsPage />} />
           <Route path="/targets" element={<Placeholder title="Targets" />} />
           <Route element={<RequireAuth role="admin" />}>
             <Route path="/admin" element={<Placeholder title="Admin" />} />

@@ -93,7 +93,7 @@ export async function analyzeItems(
     const alternatives = candidates
       .filter((c) => c.id !== match?.row.id)
       .slice(0, 2)
-      .map((c) => ({ foodId: c.id, name: c.name }));
+      .map((c) => ({ foodId: c.id, name: c.name, per100g: tablePer100g(c) }));
     const base = { detected, grams, source, alternatives };
 
     if (match) {

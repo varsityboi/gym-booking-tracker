@@ -30,7 +30,7 @@ export const upload = multer({
 });
 
 router.post("/analyze", requireAuth, upload.single("photo"), analyze);
-router.post("/", requireAuth, validate(createMealSchema), create);
+router.post("/", requireAuth, validate(createMealSchema, { itemIndex: true }), create);
 router.get("/", requireAuth, validateQuery(mealsDayQuerySchema), list);
 router.post("/:mealId/items", requireAuth, validate(addMealItemSchema), addItemToMeal);
 router.patch("/:mealId/items/:itemId", requireAuth, validate(editMealItemSchema), editMealItem);

@@ -1,10 +1,19 @@
 import { z } from "zod";
 
-export function validate(schema) {
+// Checks req.body against the schema; on failure 400 { error } with the first
+// issue's message. With { itemIndex: true } (for bodies with an `items`
+// array), an issue inside one item also gives that item's index, so the
+// client can show the error on the right item: { error, itemIndex }.
+export function validate(schema, { itemIndex = false } = {}) {
   return (req, res, next) => {
     const result = schema.safeParse(req.body ?? {});
     if (!result.success) {
-      return res.status(400).json({ error: result.error.issues[0].message });
+      const issue = result.error.issues[0];
+      const body = { error: issue.message };
+      if (itemIndex && issue.path[0] === "items" && Number.isInteger(issue.path[1])) {
+        body.itemIndex = issue.path[1];
+      }
+      return res.status(400).json(body);
     }
     req.body = result.data;
     next();

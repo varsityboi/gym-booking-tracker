@@ -391,8 +391,16 @@ test("analyze: AI picks table items, estimates the rest, and adds up totals", as
     grams: 90,
     source: "ai",
     alternatives: [
-      { foodId: 1, name: "Dal parantha/paratha" },
-      { foodId: 3, name: "Paneer parantha/paratha" },
+      {
+        foodId: 1,
+        name: "Dal parantha/paratha",
+        per100g: { calories: 260, protein_g: 8, fat_g: 10, carbs_g: 35 },
+      },
+      {
+        foodId: 3,
+        name: "Paneer parantha/paratha",
+        per100g: { calories: 280, protein_g: 10, fat_g: 14, carbs_g: 30 },
+      },
     ],
     kind: "table",
     confident: true,

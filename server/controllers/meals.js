@@ -7,6 +7,7 @@ import {
   removeItem,
   addItem,
   getMealHistory,
+  findMissingFoodIndex,
 } from "../models/meal.js";
 import { countTodayForUser, recordAnalysis } from "../models/photoAnalysis.js";
 import { readPlate } from "../services/gemini.js";
@@ -102,7 +103,10 @@ export async function create(req, res) {
     });
   } catch (err) {
     if (err.code === "23503") {
-      return res.status(400).json({ error: "one of the foods does not exist" });
+      const itemIndex = await findMissingFoodIndex(items);
+      return res
+        .status(400)
+        .json({ error: "one of the foods does not exist", ...(itemIndex === null ? {} : { itemIndex }) });
     }
     throw err;
   }

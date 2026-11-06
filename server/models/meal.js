@@ -94,6 +94,16 @@ export async function createMeal(userId, eatenAt, items) {
   }
 }
 
+// Index of the first table item whose foodId isn't in the foods table, or
+// null. Used after a foreign-key failure to say which item it was.
+export async function findMissingFoodIndex(items) {
+  const ids = items.filter((i) => i.kind === "table").map((i) => i.foodId);
+  const { rows } = await pool.query("SELECT id FROM foods WHERE id = ANY($1::int[])", [ids]);
+  const found = new Set(rows.map((r) => r.id));
+  const index = items.findIndex((i) => i.kind === "table" && !found.has(i.foodId));
+  return index === -1 ? null : index;
+}
+
 // Today's bounds in India time: { start_at, end_at, date }.
 export async function getIndiaDayBounds() {
   const bounds = await pool.query(

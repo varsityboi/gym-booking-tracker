@@ -636,8 +636,8 @@ paths:
                     grams: 100
                     source: ai
                     alternatives:
-                      - { foodId: 91, name: Dal parantha/paratha }
-                      - { foodId: 95, name: Paneer parantha/paratha }
+                      - { foodId: 91, name: Dal parantha/paratha, per100g: { calories: 268.24, protein_g: 6.78, fat_g: 13.05, carbs_g: 30.03 } }
+                      - { foodId: 95, name: Paneer parantha/paratha, per100g: { calories: 262.97, protein_g: 7.98, fat_g: 14.62, carbs_g: 24.33 } }
                     kind: table
                     confident: true
                     foodId: 87
@@ -795,22 +795,24 @@ paths:
                   - { name: Plain parantha/paratha, kind: table, grams: 100, calories: 298.3, protein_g: 5.1, fat_g: 16.9, carbs_g: 30.7 }
                   - { name: Sliced onion, kind: estimated, grams: 30, calories: 12, protein_g: 0.3, fat_g: 0, carbs_g: 2.7 }
         "400":
-          description: Invalid body, or a foodId that doesn't exist.
+          description: |
+            Invalid body, or a foodId that doesn't exist. When the problem is in
+            one item, `itemIndex` is that item's position in `items` (from 0).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema: { $ref: "#/components/schemas/ItemError" }
               examples:
                 noItems: { value: { error: "Invalid input: expected array, received undefined" } }
                 empty: { value: { error: a meal needs at least one food } }
                 tooMany: { value: { error: too many items in one meal } }
                 eatenAt: { value: { error: eatenAt must be a valid date } }
                 future: { value: { error: "eatenAt can't be in the future" } }
-                foodId: { value: { error: invalid foodId } }
-                grams: { value: { error: grams must be more than 0 } }
-                name: { value: { error: name is required } }
-                per100g: { value: { error: caloriesPer100g must be from 0 to 900 } }
-                macros: { value: { error: "protein + fat + carbs can't be more than 100 g per 100 g" } }
-                unknownFood: { value: { error: one of the foods does not exist } }
+                foodId: { value: { error: invalid foodId, itemIndex: 0 } }
+                grams: { value: { error: grams must be more than 0, itemIndex: 1 } }
+                name: { value: { error: name is required, itemIndex: 1 } }
+                per100g: { value: { error: caloriesPer100g must be from 0 to 900, itemIndex: 1 } }
+                macros: { value: { error: "protein + fat + carbs can't be more than 100 g per 100 g", itemIndex: 1 } }
+                unknownFood: { value: { error: one of the foods does not exist, itemIndex: 0 } }
                 json: { value: { error: invalid JSON in request body } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
@@ -1300,6 +1302,16 @@ components:
       properties:
         error: { type: string }
 
+    ItemError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        itemIndex:
+          type: integer
+          minimum: 0
+          description: The item (position in `items`, from 0) the error is about. Left out when it isn't about one item.
+
     User:
       type: object
       required: [id, name, email, role]
@@ -1486,12 +1498,14 @@ components:
         alternatives:
           type: array
           maxItems: 2
+          description: Other likely foods from the table, with their values per 100 g so the client can swap to one without another request.
           items:
             type: object
-            required: [foodId, name]
+            required: [foodId, name, per100g]
             properties:
               foodId: { type: integer }
               name: { type: string }
+              per100g: { $ref: "#/components/schemas/Nutrition" }
         kind:
           type: string
           enum: [table, estimated, unknown]

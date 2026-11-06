@@ -206,6 +206,23 @@ describe("meal history and versioned edits (real database)", { skip: RUN_DB_TEST
     assert.equal(unknown.body.error, "food does not exist");
   });
 
+  test("POST /meals errors say which item: bad item and unknown food, nothing saved", async () => {
+    const before = await pool.query("SELECT count(*)::int AS n FROM meals WHERE user_id = $1", [alice.id]);
+    const bad = await api("POST", "/meals", alice, {
+      items: [{ foodId: foods[0].id, grams: 100 }, { ...ONION, grams: -5 }],
+    });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(bad.body, { error: "grams must be more than 0", itemIndex: 1 });
+
+    const unknown = await api("POST", "/meals", alice, {
+      items: [{ foodId: foods[0].id, grams: 100 }, { ...ONION, grams: 30 }, { foodId: 999999999, grams: 50 }],
+    });
+    assert.equal(unknown.status, 400);
+    assert.deepEqual(unknown.body, { error: "one of the foods does not exist", itemIndex: 2 });
+    const after = await pool.query("SELECT count(*)::int AS n FROM meals WHERE user_id = $1", [alice.id]);
+    assert.equal(after.rows[0].n, before.rows[0].n);
+  });
+
   test("a stale version: 409", async () => {
     const res = await api("PATCH", itemPath(tableItemId), alice, { version: 1, grams: 50 });
     assert.equal(res.status, 409);
