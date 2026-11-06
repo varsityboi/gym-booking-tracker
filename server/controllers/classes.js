@@ -5,7 +5,7 @@ import { joinWaitlist, leaveWaitlist } from "../models/waitlist.js";
 const CLASS_CANCELLED = "class was cancelled";
 
 // The class id from the URL, or null (after sending 400) when it's invalid.
-function classIdFrom(req, res) {
+export function classIdFrom(req, res) {
   const classId = Number(req.params.id);
   if (!Number.isInteger(classId) || classId < 1) {
     res.status(400).json({ error: "invalid class id" });

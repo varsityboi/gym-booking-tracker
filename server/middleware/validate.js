@@ -203,3 +203,53 @@ export const editMealItemSchema = z
   });
 
 export const removeMealItemSchema = z.object({ version: versionSchema });
+
+// GET /admin/classes?from=&to=. Each is an ISO date (YYYY-MM-DD, a gym-local
+// day in India time) or an ISO date-time with a time zone (Z or +05:30).
+// `from` is the start of its day; a date-only `to` includes that whole day.
+// Defaults: from = now, to = from + 30 days. The range must be positive and
+// at most 90 days. Parses to { from: Date, to: Date }, to exclusive.
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const ADMIN_CLASSES_DEFAULT_DAYS = 30;
+export const ADMIN_CLASSES_MAX_DAYS = 90;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_TIME = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+const realDate = (d) => {
+  const parsed = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
+};
+
+const instantSchema = (field, { wholeDay = false } = {}) =>
+  z.string({ message: `${field} must be an ISO date or date-time` }).transform((s, ctx) => {
+    const message = `${field} must be an ISO date (YYYY-MM-DD) or date-time with a time zone`;
+    if (DATE_ONLY.test(s) && realDate(s)) {
+      const start = new Date(`${s}T00:00:00+05:30`);
+      return wholeDay ? new Date(start.getTime() + DAY_MS) : start;
+    }
+    const m = s.match(DATE_TIME);
+    const t = m && realDate(m[1]) ? new Date(s) : null;
+    if (!t || Number.isNaN(t.getTime())) {
+      ctx.addIssue({ code: "custom", message });
+      return z.NEVER;
+    }
+    return t;
+  });
+
+export const adminClassesQuerySchema = z
+  .object({
+    from: instantSchema("from").optional(),
+    to: instantSchema("to", { wholeDay: true }).optional(),
+  })
+  .transform(({ from, to }, ctx) => {
+    const start = from ?? new Date();
+    const end = to ?? new Date(start.getTime() + ADMIN_CLASSES_DEFAULT_DAYS * DAY_MS);
+    if (end <= start) {
+      ctx.addIssue({ code: "custom", message: "to must be after from" });
+      return z.NEVER;
+    }
+    if (end - start > ADMIN_CLASSES_MAX_DAYS * DAY_MS) {
+      ctx.addIssue({ code: "custom", message: `the range can be at most ${ADMIN_CLASSES_MAX_DAYS} days` });
+      return z.NEVER;
+    }
+    return { from: start, to: end };
+  });

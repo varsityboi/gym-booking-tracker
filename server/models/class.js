@@ -1,5 +1,5 @@
 import pool from "../config/db.js";
-import { lockClass, promoteFromWaitlist } from "./waitlist.js";
+import { lockClass, promoteFromWaitlist, POSITION_SQL } from "./waitlist.js";
 
 export async function createClass(title, startsAt, capacity) {
   const result = await pool.query(
@@ -129,6 +129,74 @@ export async function cancelClass(classId, reason) {
     };
   } catch (err) {
     await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Admin views. One class row for an admin: every column the lists show, with
+// places left and the number waiting counted in the same query.
+const ADMIN_CLASS_COLUMNS = `c.id, c.title, c.starts_at, c.capacity, c.booked,
+  c.capacity - c.booked AS places_left, c.status, c.cancelled_at, c.cancel_reason,
+  (SELECT COUNT(*)::int FROM waitlist w WHERE w.class_id = c.id AND w.status = 'waiting') AS waiting_count`;
+
+export const ADMIN_CLASSES_LIMIT = 200;
+
+// Every class (scheduled or cancelled) starting in [from, to), in time order,
+// at most ADMIN_CLASSES_LIMIT rows.
+export async function listClassesForAdmin(from, to) {
+  const result = await pool.query(
+    `SELECT ${ADMIN_CLASS_COLUMNS}
+     FROM classes c
+     WHERE c.starts_at >= $1 AND c.starts_at < $2
+     ORDER BY c.starts_at, c.id
+     LIMIT $3`,
+    [from, to, ADMIN_CLASSES_LIMIT]
+  );
+  return result.rows;
+}
+
+// A class with its active bookings (oldest first) and its waiting list (in
+// line order, with the same positions members see). undefined when the class
+// doesn't exist.
+// The three reads run in one read-only REPEATABLE READ transaction on one
+// client, so they all see the same snapshot: a booking or promotion landing
+// in between can't show someone as both booked and waiting, or make the
+// counts disagree with the lists.
+export async function findClassPeople(classId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+
+    const cls = await client.query(`SELECT ${ADMIN_CLASS_COLUMNS} FROM classes c WHERE c.id = $1`, [classId]);
+    if (cls.rowCount === 0) {
+      await client.query("COMMIT");
+      return undefined;
+    }
+
+    const booked = await client.query(
+      `SELECT b.id AS "bookingId", u.id AS "userId", u.name, u.email, b.created_at AS "bookedAt"
+       FROM bookings b
+       JOIN users u ON u.id = b.user_id
+       WHERE b.class_id = $1 AND b.status = 'active'
+       ORDER BY b.created_at, b.id`,
+      [classId]
+    );
+    const waiting = await client.query(
+      `SELECT ${POSITION_SQL} AS position, u.id AS "userId", u.name, u.email, w.created_at AS "joinedAt"
+       FROM waitlist w
+       JOIN users u ON u.id = w.user_id
+       WHERE w.class_id = $1 AND w.status = 'waiting'
+       ORDER BY w.created_at, w.id`,
+      [classId]
+    );
+
+    await client.query("COMMIT");
+    return { class: cls.rows[0], booked: booked.rows, waiting: waiting.rows };
+  } catch (err) {
+    // Don't let a failed ROLLBACK hide the error that caused it.
+    await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
     client.release();

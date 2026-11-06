@@ -41,6 +41,8 @@ tags:
   - name: Me
   - name: Foods
   - name: Health
+  - name: Admin
+    description: Read-only views for admins. Members get 403.
 
 paths:
   # ------------------------------------------------------------------ Health
@@ -1183,6 +1185,92 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  # ------------------------------------------------------------------- Admin
+  /admin/classes:
+    get:
+      tags: [Admin]
+      summary: Classes in a date range (admin only)
+      description: |
+        **Admin only.** Members get 403.
+
+        Every class starting in `[from, to)`, scheduled and cancelled, in time
+        order, at most 200. `waiting_count` is the number of `waiting`
+        waitlist entries (a cancelled class has none: cancelling removes them).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: |
+            Start of the range. An ISO date (`YYYY-MM-DD`, from midnight India
+            time) or an ISO date-time with a time zone. Defaults to now.
+          schema: { type: string }
+          example: "2026-11-01"
+        - name: to
+          in: query
+          required: false
+          description: |
+            End of the range (exclusive). An ISO date includes that whole day
+            (India time); a date-time is the exact end. Defaults to `from` + 30
+            days. At most 90 days after `from`.
+          schema: { type: string }
+          example: "2026-11-30"
+      responses:
+        "200":
+          description: The classes.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 200
+                items: { $ref: "#/components/schemas/AdminClass" }
+              example:
+                - { id: 7, title: Morning yoga, starts_at: "2026-11-08T01:30:00.000Z", capacity: 15, booked: 15, places_left: 0, status: scheduled, cancelled_at: null, cancel_reason: null, waiting_count: 3 }
+                - { id: 8, title: HIIT, starts_at: "2026-11-08T12:30:00.000Z", capacity: 20, booked: 0, places_left: 20, status: cancelled, cancelled_at: "2026-11-06T10:00:00.000Z", cancel_reason: Instructor is ill, waiting_count: 0 }
+        "400":
+          description: Bad `from` or `to`, `to` not after `from`, or a range over 90 days.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                format: { value: { error: from must be an ISO date (YYYY-MM-DD) or date-time with a time zone } }
+                order: { value: { error: to must be after from } }
+                tooLong: { value: { error: the range can be at most 90 days } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /admin/classes/{id}/people:
+    get:
+      tags: [Admin]
+      summary: Who is booked and waiting for a class (admin only)
+      description: |
+        **Admin only.** Members get 403.
+
+        The class (same fields as in `GET /admin/classes`), its active
+        bookings oldest first, and its waiting list in line order. `position`
+        is the same place in line members see in `GET /bookings/mine`.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ClassId" }]
+      responses:
+        "200":
+          description: The class and its people.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClassPeople" }
+              example:
+                class: { id: 7, title: Morning yoga, starts_at: "2026-11-08T01:30:00.000Z", capacity: 2, booked: 2, places_left: 0, status: scheduled, cancelled_at: null, cancel_reason: null, waiting_count: 1 }
+                booked:
+                  - { bookingId: 31, userId: 4, name: Asha, email: asha@example.com, bookedAt: "2026-11-05T08:00:00.000Z" }
+                  - { bookingId: 35, userId: 9, name: Ravi, email: ravi@example.com, bookedAt: "2026-11-05T09:12:00.000Z" }
+                waiting:
+                  - { position: 1, userId: 12, name: Meera, email: meera@example.com, joinedAt: "2026-11-05T10:30:00.000Z" }
+        "400": { $ref: "#/components/responses/InvalidClassId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/ClassNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1335,6 +1423,51 @@ components:
         status: { type: string, enum: [scheduled, cancelled] }
         cancelled_at: { type: [string, "null"], format: date-time }
         cancel_reason: { type: [string, "null"] }
+
+    AdminClass:
+      type: object
+      required: [id, title, starts_at, capacity, booked, places_left, status, cancelled_at, cancel_reason, waiting_count]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+        capacity: { type: integer }
+        booked: { type: integer, minimum: 0 }
+        places_left: { type: integer, minimum: 0 }
+        status: { type: string, enum: [scheduled, cancelled] }
+        cancelled_at: { type: [string, "null"], format: date-time }
+        cancel_reason: { type: [string, "null"] }
+        waiting_count: { type: integer, minimum: 0 }
+
+    ClassPeople:
+      type: object
+      required: [class, booked, waiting]
+      properties:
+        class: { $ref: "#/components/schemas/AdminClass" }
+        booked:
+          type: array
+          description: Active bookings, oldest first.
+          items:
+            type: object
+            required: [bookingId, userId, name, email, bookedAt]
+            properties:
+              bookingId: { type: integer }
+              userId: { type: integer }
+              name: { type: string }
+              email: { type: string }
+              bookedAt: { type: string, format: date-time }
+        waiting:
+          type: array
+          description: Waiting entries in line order (position 1 is next).
+          items:
+            type: object
+            required: [position, userId, name, email, joinedAt]
+            properties:
+              position: { type: integer, minimum: 1 }
+              userId: { type: integer }
+              name: { type: string }
+              email: { type: string }
+              joinedAt: { type: string, format: date-time }
 
     ClassWithPlaces:
       type: object

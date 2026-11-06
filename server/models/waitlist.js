@@ -2,7 +2,7 @@ import pool from "../config/db.js";
 
 // A waiting entry's 1-based place in line for its class, by (created_at, id).
 // `w` is the waitlist row the position is for.
-const POSITION_SQL = `(
+export const POSITION_SQL = `(
   SELECT COUNT(*)::int FROM waitlist o
   WHERE o.class_id = w.class_id AND o.status = 'waiting'
     AND (o.created_at, o.id) <= (w.created_at, w.id)

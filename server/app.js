@@ -12,6 +12,7 @@ import waterRoutes from "./routes/water.js";
 import targetRoutes from "./routes/targets.js";
 import meRoutes from "./routes/me.js";
 import healthRoutes from "./routes/health.js";
+import adminRoutes from "./routes/admin.js";
 
 // Every API router and where it's mounted, in mount order. Exported so the
 // OpenAPI test can list the real routes.
@@ -25,6 +26,7 @@ export const apiMounts = [
   ["/auth", authRouter],
   ["/classes", classesRouter],
   ["/bookings", bookingsRouter],
+  ["/admin", adminRoutes],
 ];
 
 // The hand-written API description, loaded once at startup.
