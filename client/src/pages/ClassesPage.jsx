@@ -3,7 +3,7 @@ import { api } from "../api.js";
 import ClassCard from "../components/classes/ClassCard.jsx";
 import MyBookings from "../components/classes/MyBookings.jsx";
 import RetryBox from "../components/RetryBox.jsx";
-import { dayHeading, dayKey } from "../time.js";
+import { groupByDay } from "../time.js";
 
 // GET /classes (scheduled, next 7 days) and GET /bookings/mine together.
 // Only the newest request's answer is used, so a slow old reload can't
@@ -35,17 +35,6 @@ function useClassesData() {
   }, [reload]);
 
   return { ...state, reload };
-}
-
-// [{ key, heading, classes }] in time order, by gym-local day.
-function groupByDay(classes) {
-  const groups = [];
-  for (const cls of classes) {
-    const key = dayKey(cls.starts_at);
-    if (groups.at(-1)?.key !== key) groups.push({ key, heading: dayHeading(cls.starts_at), classes: [] });
-    groups.at(-1).classes.push(cls);
-  }
-  return groups;
 }
 
 export default function ClassesPage() {
@@ -91,11 +80,11 @@ export default function ClassesPage() {
             No classes this week
           </p>
         ) : (
-          groupByDay(classes).map((group) => (
+          groupByDay(classes, (c) => c.starts_at).map((group) => (
             <div key={group.key} className="mt-3">
               <h3 className="mb-2 text-base font-semibold text-slate-800">{group.heading}</h3>
               <ul className="space-y-3">
-                {group.classes.map((cls) => (
+                {group.items.map((cls) => (
                   <ClassCard
                     key={cls.id}
                     cls={cls}

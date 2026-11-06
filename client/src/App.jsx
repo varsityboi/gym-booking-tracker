@@ -3,10 +3,10 @@ import { isLoggedIn } from "./auth.js";
 import Layout from "./components/Layout.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import GuestOnly from "./components/GuestOnly.jsx";
+import AdminPage from "./pages/AdminPage.jsx";
 import ClassesPage from "./pages/ClassesPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import MealsPage from "./pages/MealsPage.jsx";
-import Placeholder from "./pages/Placeholder.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
 import TargetsPage from "./pages/TargetsPage.jsx";
@@ -34,7 +34,7 @@ export default function App() {
           <Route path="/meals" element={<MealsPage />} />
           <Route path="/targets" element={<TargetsPage />} />
           <Route element={<RequireAuth role="admin" />}>
-            <Route path="/admin" element={<Placeholder title="Admin" />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
         </Route>
       </Route>

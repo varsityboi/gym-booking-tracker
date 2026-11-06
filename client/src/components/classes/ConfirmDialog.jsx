@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 
 // An in-page confirmation using <dialog>: showModal() traps focus, makes the
 // rest of the page inert, and Escape cancels. Rendered only while open.
-export default function ConfirmDialog({ title, message, confirmLabel, cancelLabel = "Keep it", onConfirm, onCancel }) {
+// children (optional) go under the message, e.g. a reason field.
+export default function ConfirmDialog({ title, message, confirmLabel, cancelLabel = "Keep it", onConfirm, onCancel, children }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function ConfirmDialog({ title, message, confirmLabel, cancelLabe
         {title}
       </h2>
       <p className="mt-2 text-sm text-slate-600">{message}</p>
+      {children && <div className="mt-4">{children}</div>}
       <div className="mt-5 flex flex-col gap-2">
         <button
           type="button"

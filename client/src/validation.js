@@ -79,3 +79,29 @@ export function macroCalories(form) {
   if ([p, f, c].some((n) => Number.isNaN(n) || n < 0)) return null;
   return 4 * p + 9 * f + 4 * c;
 }
+
+// createClassSchema: title 1-100 after trimming, a start in the future,
+// capacity a whole number 1-200 (updateCapacitySchema has the same range).
+export function capacityError(text) {
+  const s = String(text ?? "").trim();
+  if (s === "") return "capacity is required";
+  if (!/^-?\d+$/.test(s)) return "capacity must be a whole number";
+  const n = Number(s);
+  if (n < 1 || n > 200) return "capacity must be from 1 to 200";
+  return null;
+}
+
+// { title, startsAt (ISO with +05:30, or null if the input wasn't a date),
+// capacity (text) } -> { errors, values }; values only when valid.
+export function validateNewClass({ title, startsAt, capacity }, now = new Date()) {
+  const errors = {};
+  const trimmed = String(title ?? "").trim();
+  if (!trimmed) errors.title = "title is required";
+  else if (trimmed.length > 100) errors.title = "title must be at most 100 characters";
+  if (!startsAt) errors.startsAt = "choose a date and time";
+  else if (new Date(startsAt) <= now) errors.startsAt = "class must start in the future";
+  const capErr = capacityError(capacity);
+  if (capErr) errors.capacity = capErr;
+  if (Object.keys(errors).length) return { errors };
+  return { errors, values: { title: trimmed, startsAt, capacity: Number(String(capacity).trim()) } };
+}

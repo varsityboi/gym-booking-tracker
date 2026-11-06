@@ -66,3 +66,40 @@ const longDateFormat = new Intl.DateTimeFormat("en-IN", {
 // "Saturday, 7 November 2026". Midday India time, so it's the same day
 // whatever the phone's own time zone.
 export const longDate = (isoDay) => longDateFormat.format(new Date(`${isoDay}T12:00:00+05:30`));
+
+// <input type="datetime-local"> values are gym-local (India) wall-clock times.
+// "2026-11-08T07:00" -> "2026-11-08T07:00:00+05:30", or null if it isn't one.
+export function gymInputToIso(value) {
+  const m = String(value ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?$/);
+  if (!m) return null;
+  const iso = `${m[1]}${m[2] ?? ":00"}+05:30`;
+  return Number.isNaN(new Date(iso).getTime()) ? null : iso;
+}
+
+const inputPartsFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: GYM_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// The gym-local time now, in datetime-local format ("2026-11-07T18:45"), for
+// the input's min.
+export function gymInputNow(date = new Date()) {
+  const p = Object.fromEntries(inputPartsFormat.formatToParts(date).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
+// [{ key, heading, items }] in the given order, by gym-local day of getDate(item).
+export function groupByDay(items, getDate) {
+  const groups = [];
+  for (const item of items) {
+    const key = dayKey(getDate(item));
+    if (groups.at(-1)?.key !== key) groups.push({ key, heading: dayHeading(getDate(item)), items: [] });
+    groups.at(-1).items.push(item);
+  }
+  return groups;
+}
