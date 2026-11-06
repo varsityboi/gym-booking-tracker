@@ -47,7 +47,7 @@ export default function SignupPage() {
           {...field("email")}
         />
         <PasswordField label="Password" autoComplete="new-password" {...field("password")} />
-        <p className="-mt-3 text-xs text-slate-500">8 to 72 characters.</p>
+        <p className="-mt-3 text-xs text-ink-muted">8 to 72 characters.</p>
         <SubmitButton busy={busy} busyLabel="Creating account…">
           Create account
         </SubmitButton>

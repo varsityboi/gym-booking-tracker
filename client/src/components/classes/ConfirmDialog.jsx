@@ -20,18 +20,18 @@ export default function ConfirmDialog({ title, message, confirmLabel, cancelLabe
         onCancel();
       }}
       aria-labelledby="confirm-title"
-      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-xl bg-white p-5 shadow-xl backdrop:bg-slate-900/40"
+      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-card bg-surface p-6 shadow-lift backdrop:bg-ink/40"
     >
-      <h2 id="confirm-title" className="text-lg font-semibold text-slate-900">
+      <h2 id="confirm-title" className="text-lg font-bold text-ink">
         {title}
       </h2>
-      <p className="mt-2 text-sm text-slate-600">{message}</p>
+      <p className="mt-2 text-sm text-ink-soft">{message}</p>
       {children && <div className="mt-4">{children}</div>}
       <div className="mt-5 flex flex-col gap-2">
         <button
           type="button"
           onClick={onConfirm}
-          className="h-11 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+          className="h-11 rounded-full bg-danger text-sm font-bold text-on-primary hover:bg-danger-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
         >
           {confirmLabel}
         </button>
@@ -39,7 +39,7 @@ export default function ConfirmDialog({ title, message, confirmLabel, cancelLabe
           type="button"
           onClick={onCancel}
           autoFocus
-          className="h-11 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200"
+          className="h-11 rounded-full border border-line-strong text-sm font-bold text-ink-soft hover:bg-sunken focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           {cancelLabel}
         </button>

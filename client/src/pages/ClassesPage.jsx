@@ -43,12 +43,12 @@ export default function ClassesPage() {
   if (!data) {
     return (
       <section>
-        <h1 className="text-xl font-semibold text-slate-900">Classes</h1>
+        <h1 className="text-2xl font-extrabold text-ink md:text-3xl">Classes</h1>
         <div className="mt-4">
           {status === "error" ? (
             <RetryBox message={`Couldn't load classes: ${error.message}`} onRetry={reload} />
           ) : (
-            <p className="text-sm text-slate-500" role="status">
+            <p className="text-sm text-ink-muted" role="status">
               Loading classes…
             </p>
           )}
@@ -63,7 +63,7 @@ export default function ClassesPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Classes</h1>
+      <h1 className="text-2xl font-extrabold text-ink md:text-3xl">Classes</h1>
 
       {status === "error" && (
         <RetryBox message={`Couldn't refresh: ${error.message}. Showing the last loaded lists.`} onRetry={reload} />
@@ -72,18 +72,19 @@ export default function ClassesPage() {
       <MyBookings bookings={mine.bookings} waitlist={mine.waitlist} reload={reload} />
 
       <section aria-labelledby="this-week">
-        <h2 id="this-week" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 id="this-week" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
           This week
         </h2>
         {classes.length === 0 ? (
-          <p className="mt-2 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            No classes this week
-          </p>
+          <div className="mt-3 rounded-card border-2 border-dashed border-line-strong p-8 text-center">
+            <p className="font-bold text-ink">No classes this week</p>
+            <p className="mt-1 text-sm text-ink-muted">New classes are added regularly, so check back soon.</p>
+          </div>
         ) : (
           groupByDay(classes, (c) => c.starts_at).map((group) => (
-            <div key={group.key} className="mt-3">
-              <h3 className="mb-2 text-base font-semibold text-slate-800">{group.heading}</h3>
-              <ul className="space-y-3">
+            <div key={group.key} className="mt-4">
+              <h3 className="mb-3 text-lg font-extrabold text-ink">{group.heading}</h3>
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {group.items.map((cls) => (
                   <ClassCard
                     key={cls.id}

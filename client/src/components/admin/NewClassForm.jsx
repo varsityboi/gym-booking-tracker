@@ -57,8 +57,8 @@ export default function NewClassForm({ onCreated }) {
   }
 
   return (
-    <section aria-labelledby="new-class-heading" className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 id="new-class-heading" className="font-semibold text-slate-900">
+    <section aria-labelledby="new-class-heading" className="rounded-card bg-surface p-5 shadow-card">
+      <h2 id="new-class-heading" className="text-lg font-extrabold text-ink">
         New class
       </h2>
       <form onSubmit={submit} noValidate className="mt-3 space-y-3">
@@ -70,7 +70,7 @@ export default function NewClassForm({ onCreated }) {
           Create class
         </SubmitButton>
         {created && (
-          <p role="status" className="text-center text-sm font-medium text-emerald-700">
+          <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-center text-sm font-bold text-success">
             Class created: {created}
           </p>
         )}

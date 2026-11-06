@@ -37,17 +37,17 @@ export default function NumbersForm({ initial, submitLabel, onSubmit, onCancel }
   }
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-3 rounded-lg bg-slate-50 p-3">
+    <form onSubmit={submit} noValidate className="space-y-3 rounded-2xl bg-sunken p-3">
       <TextField label="Name" autoComplete="off" maxLength={100} {...field("name")} />
       <TextField label="Grams" inputMode="decimal" autoComplete="off" {...field("grams")} />
-      <p className="text-xs text-slate-500">Totals for this many grams:</p>
+      <p className="text-xs text-ink-muted">Totals for this many grams:</p>
       <div className="grid grid-cols-2 gap-3">
         {NUMBER_FIELDS.map(({ key, label }) => (
           <TextField key={key} label={label} inputMode="decimal" autoComplete="off" {...field(key)} />
         ))}
       </div>
       {error && (
-        <p role="alert" className="text-sm text-red-700 first-letter:uppercase">
+        <p role="alert" className="text-sm text-danger first-letter:uppercase">
           {error}
         </p>
       )}

@@ -16,10 +16,10 @@ import NumbersForm from "./NumbersForm.jsx";
 import NutritionLine from "./NutritionLine.jsx";
 
 function kindLabel(item) {
-  if (item.kind === "table") return { text: "From nutrition table", className: "bg-emerald-50 text-emerald-800" };
-  if (item.kind === "unknown") return { text: "Needs your input", className: "bg-red-100 text-red-800" };
-  if (item.userNumbers) return { text: "Your numbers", className: "bg-slate-100 text-slate-700" };
-  return { text: "AI estimate", className: "bg-sky-50 text-sky-800" };
+  if (item.kind === "table") return { text: "From nutrition table", className: "bg-success-soft text-success" };
+  if (item.kind === "unknown") return { text: "Needs your input", className: "bg-primary text-on-primary" };
+  if (item.userNumbers) return { text: "Your numbers", className: "bg-sunken text-ink-soft" };
+  return { text: "AI estimate", className: "bg-water-soft text-water" };
 }
 
 // The totals the numbers form starts with: what the item has now, if anything.
@@ -57,29 +57,37 @@ export default function ReviewItemCard({ item, onChange, onRemove, showError, se
     });
   }
 
-  const border = unknown ? "border-red-300" : pleaseCheck ? "border-amber-300 bg-amber-50/40" : "border-slate-200";
+  // A server error on save is the only red; "needs your input" is a call to
+  // action (primary), "please check" a gentle warning (amber).
+  const look = serverError
+    ? "border-2 border-danger bg-surface"
+    : unknown
+      ? "border-2 border-primary-line bg-surface"
+      : pleaseCheck
+        ? "border border-warn-line bg-warn-soft/40"
+        : "border border-transparent bg-surface";
 
   return (
     <li
-      className={`rounded-xl border bg-white p-4 ${serverError ? "border-red-400" : border}`}
+      className={`rounded-card p-5 shadow-card ${look}`}
       data-kind={item.kind}
       data-review-item={item.key}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${label.className}`}>{label.text}</span>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${label.className}`}>{label.text}</span>
         {pleaseCheck && (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Please check</span>
+          <span className="rounded-full bg-warn-soft px-2.5 py-0.5 text-xs font-bold text-warn ring-1 ring-warn-line">Please check</span>
         )}
       </div>
 
-      <h3 className="mt-2 font-semibold text-slate-900">{item.name}</h3>
+      <h3 className="mt-2 text-lg font-bold text-ink">{item.name}</h3>
       {item.detected && item.detected !== item.name && (
-        <p className="text-xs text-slate-500">Seen in the photo as: {item.detected}</p>
+        <p className="text-xs text-ink-muted">Seen in the photo as: {item.detected}</p>
       )}
 
       <div className="mt-3 flex items-end gap-3">
         <div className="w-28 shrink-0">
-          <label htmlFor={gramsId} className="mb-1 block text-xs font-medium text-slate-600">
+          <label htmlFor={gramsId} className="mb-1 block text-xs font-medium text-ink-soft">
             Grams
           </label>
           <input
@@ -88,24 +96,24 @@ export default function ReviewItemCard({ item, onChange, onRemove, showError, se
             autoComplete="off"
             value={item.grams}
             onChange={(e) => onChange(withGrams(item, e.target.value))}
-            className="block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="block h-11 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
-        <NutritionLine nutrition={nutritionOf(item)} className="pb-2.5 text-sm text-slate-600" />
+        <NutritionLine nutrition={nutritionOf(item)} className="pb-2.5 text-sm text-ink-soft" />
       </div>
 
-      {explanationOf(item) && <p className="mt-2 text-sm text-slate-500">{explanationOf(item)}</p>}
+      {explanationOf(item) && <p className="mt-2 text-sm text-ink-muted">{explanationOf(item)}</p>}
 
       {item.alternatives.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs font-medium text-slate-600">Or is it:</p>
+          <p className="text-xs font-medium text-ink-soft">Or is it:</p>
           <div className="mt-1 flex flex-wrap gap-2">
             {item.alternatives.map((alt) => (
               <button
                 key={alt.foodId}
                 type="button"
                 onClick={() => pickAlternative(alt)}
-                className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-800 hover:bg-indigo-100"
+                className="rounded-full border border-primary-line bg-primary-soft px-3 py-1.5 text-sm font-semibold text-primary-ink transition-colors hover:bg-primary-soft-hover"
               >
                 {alt.name}
               </button>
@@ -145,7 +153,7 @@ export default function ReviewItemCard({ item, onChange, onRemove, showError, se
 
       <CardError message={problem ?? (serverError && `Couldn't save: ${serverError}`)} />
       {item.kind === "estimated" && item.per100g && (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-ink-muted">
           Per 100 g: {fmt(item.per100g.calories)} kcal · P {fmt(item.per100g.protein_g)}g · F {fmt(item.per100g.fat_g)}g · C{" "}
           {fmt(item.per100g.carbs_g)}g
         </p>

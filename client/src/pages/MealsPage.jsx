@@ -110,9 +110,12 @@ export default function MealsPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Meals</h1>
+      <div>
+        <h1 className="text-2xl font-extrabold text-ink md:text-3xl">Meals</h1>
+        <p className="mt-1 text-sm text-ink-muted">Snap your plate or add foods, check them, then save.</p>
+      </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3 md:flex md:flex-wrap md:items-center md:gap-3 md:space-y-0">
         <input
           ref={fileInput}
           type="file"
@@ -128,7 +131,7 @@ export default function MealsPage() {
           type="button"
           onClick={() => fileInput.current?.click()}
           disabled={plate.busy}
-          className="flex h-14 w-full items-center justify-center rounded-xl bg-indigo-600 text-lg font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex h-14 w-full items-center justify-center rounded-full bg-primary text-lg font-bold text-on-primary shadow-card transition-colors hover:bg-primary-hover md:w-72 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Snap your plate
         </button>
@@ -137,15 +140,19 @@ export default function MealsPage() {
         )}
 
         {plate.busy && (
-          <div role="status" className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-            <p className="text-sm font-medium text-indigo-900">
+          <div role="status" className="flex items-center justify-between gap-3 rounded-card border border-primary-line bg-primary-soft p-4 md:basis-full">
+            <p className="text-sm font-bold text-primary-ink">
               Reading your plate… <span className="tabular-nums">{plate.elapsed}s</span>
             </p>
             <SecondaryButton onClick={plate.cancel}>Cancel</SecondaryButton>
           </div>
         )}
-        <FormError message={plate.error && plate.error.message} />
-        {notice && <p className="text-sm text-slate-600">{notice}</p>}
+        {plate.error && (
+          <div className="md:basis-full">
+            <FormError message={plate.error.message} />
+          </div>
+        )}
+        {notice && <p className="text-sm text-ink-soft md:basis-full">{notice}</p>}
       </div>
 
       {adding && (
@@ -159,12 +166,16 @@ export default function MealsPage() {
       )}
 
       {items.length > 0 && (
-        <section aria-labelledby="review-heading" className="space-y-3">
-          <h2 id="review-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <section
+          aria-labelledby="review-heading"
+          className="space-y-3 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:gap-6 md:space-y-0 lg:grid-cols-[minmax(0,1fr)_20rem]"
+        >
+          <div className="space-y-3">
+          <h2 id="review-heading" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
             Check your meal
           </h2>
           <FormError message={saveError} />
-          <ul className="space-y-3" aria-label="Meal items">
+          <ul className="space-y-4" aria-label="Meal items">
             {items.map((item) => (
               <ReviewItemCard
                 key={item.key}
@@ -176,17 +187,19 @@ export default function MealsPage() {
               />
             ))}
           </ul>
+          </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Meal total</p>
-            <NutritionLine nutrition={totals} />
+          {/* Phone: under the list. md+: a panel beside it that stays in view. */}
+          <aside className="rounded-card bg-surface p-5 shadow-card md:sticky md:top-24 md:mt-9" aria-label="Meal total">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink-muted">Meal total</p>
+            <NutritionLine nutrition={totals} className="mt-1 text-base text-ink-soft" />
             {unknownCount > 0 && (
-              <p className="mt-2 text-sm font-medium text-red-700">
+              <p className="mt-2 rounded-xl bg-warn-soft px-3 py-2 text-sm font-semibold text-warn">
                 {unknownCount === 1 ? "1 item needs" : `${unknownCount} items need`} your input before saving: pick a food,
                 enter the numbers, or remove it.
               </p>
             )}
-            <div className="mt-3 flex gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <PrimaryButton onClick={save} disabled={saving || unknownCount > 0} aria-busy={saving || undefined}>
                 {saving ? "Saving…" : "Save meal"}
               </PrimaryButton>
@@ -194,7 +207,7 @@ export default function MealsPage() {
                 Discard
               </SecondaryButton>
             </div>
-          </div>
+          </aside>
           {confirmingDiscard && (
             <ConfirmDialog
               title="Discard this meal?"

@@ -26,31 +26,31 @@ export default function WaterCard({ waterMl, targetMl, reload }) {
   }
 
   return (
-    <section aria-labelledby="water-heading" className="rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-labelledby="water-heading" className="rounded-card bg-surface p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <h2 id="water-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 id="water-heading" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
           Water
         </h2>
         {running > 0 && (
-          <span role="status" className="text-xs font-medium text-sky-700">
+          <span role="status" className="text-xs font-bold text-water">
             adding…
           </span>
         )}
       </div>
       <ul className="mt-3">
-        <ProgressRow label="Today" total={waterMl} target={targetMl} unit="ml" digits={0} barClass="bg-sky-500" />
+        <ProgressRow label="Today" total={waterMl} target={targetMl} unit="ml" digits={0} barClass="bg-water" />
       </ul>
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
           onClick={() => add(undefined)}
-          className="h-14 flex-1 rounded-xl bg-sky-600 text-lg font-semibold text-white hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          className="h-14 flex-1 rounded-full bg-water text-lg font-bold shadow-sm transition-colors text-on-primary hover:bg-water-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-water/40"
         >
           + Glass
         </button>
         <SecondaryButton onClick={() => add({ ml: 500 })}>+ Bottle</SecondaryButton>
       </div>
-      <p className="mt-2 text-xs text-slate-500">Glass 250 ml · Bottle 500 ml</p>
+      <p className="mt-2 text-xs text-ink-muted">Glass 250 ml · Bottle 500 ml</p>
       <CardError message={error && `Couldn't add water: ${error.message}`} />
     </section>
   );

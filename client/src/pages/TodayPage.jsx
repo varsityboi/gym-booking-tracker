@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import { getUser } from "../auth.js";
 import RetryBox from "../components/RetryBox.jsx";
 import NextClassCard from "../components/today/NextClassCard.jsx";
 import ProgressRow from "../components/today/ProgressRow.jsx";
@@ -45,18 +46,26 @@ const NUTRIENTS = [
   { key: "carbs_g", label: "Carbs", unit: "g" },
 ];
 
+// "Asha" from "Asha Rao"; null when there's no name.
+function firstName() {
+  return getUser()?.name?.trim().split(/\s+/)[0] || null;
+}
+
 export default function TodayPage() {
   const { status, data, error, reload } = useTodayData();
+  const greeting = `Hi ${firstName() ?? "there"}!`;
 
   if (!data) {
     return (
       <section>
-        <h1 className="text-xl font-semibold text-slate-900">Today</h1>
+        <h1 className="text-2xl font-extrabold text-ink">
+          {greeting} <span aria-hidden="true">👋</span>
+        </h1>
         <div className="mt-4">
           {status === "error" ? (
             <RetryBox message={`Couldn't load today: ${error.message}`} onRetry={reload} />
           ) : (
-            <p className="text-sm text-slate-500" role="status">
+            <p className="text-sm text-ink-muted" role="status">
               Loading today…
             </p>
           )}
@@ -70,17 +79,23 @@ export default function TodayPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Today</h1>
-        <p className="mt-0.5 text-sm text-slate-500">{longDate(date)}</p>
+        <h1 className="text-2xl font-extrabold text-ink md:text-3xl">
+          {greeting} <span aria-hidden="true">👋</span>
+        </h1>
+        <p className="mt-1 text-sm text-ink-muted">Today · {longDate(date)}</p>
       </div>
 
       {status === "error" && (
         <RetryBox message={`Couldn't refresh: ${error.message}. Showing the last loaded numbers.`} onRetry={reload} />
       )}
 
+      {/* Phone: one column in this order. md+: nutrition on the left (3/5),
+          everything else stacked on the right; dense flow lets nutrition
+          start beside "Log a meal". */}
+      <div className="grid gap-5 md:grid-flow-dense md:grid-cols-5 md:items-start">
       <Link
         to="/meals"
-        className="flex h-14 items-center justify-center rounded-xl bg-indigo-600 text-lg font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+        className="flex h-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-on-primary shadow-card transition-colors hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 md:col-span-2 md:col-start-4"
       >
         Log a meal
       </Link>
@@ -88,20 +103,23 @@ export default function TodayPage() {
       {!targets && (
         <Link
           to="/targets"
-          className="block rounded-xl border border-indigo-200 bg-indigo-50 p-4 hover:bg-indigo-100"
+          className="block rounded-card border border-primary-line bg-primary-soft p-4 hover:bg-primary-soft-hover md:col-span-2 md:col-start-4"
         >
-          <span className="block font-semibold text-indigo-900">Set your daily goals</span>
-          <span className="mt-0.5 block text-sm text-indigo-800">
+          <span className="block font-bold text-primary-ink">Set your daily goals</span>
+          <span className="mt-0.5 block text-sm text-primary-ink">
             Pick calorie, protein, fat, carb and water targets to track your progress.
           </span>
         </Link>
       )}
 
-      <section aria-labelledby="nutrition-heading" className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 id="nutrition-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <section
+        aria-labelledby="nutrition-heading"
+        className="rounded-card bg-surface p-5 shadow-card md:col-span-3 md:col-start-1 md:row-span-4 md:p-6"
+      >
+        <h2 id="nutrition-heading" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
           Nutrition
         </h2>
-        <ul className="mt-3 space-y-4">
+        <ul className="mt-4 space-y-5">
           {NUTRIENTS.map(({ key, label, unit, digits }) => (
             <ProgressRow
               key={key}
@@ -115,9 +133,14 @@ export default function TodayPage() {
         </ul>
       </section>
 
-      <WaterCard waterMl={waterMl} targetMl={targets ? targets.water_ml : null} reload={reload} />
+      <div className="md:col-span-2 md:col-start-4">
+        <WaterCard waterMl={waterMl} targetMl={targets ? targets.water_ml : null} reload={reload} />
+      </div>
 
-      <NextClassCard nextClass={nextClass} />
+      <div className="md:col-span-2 md:col-start-4">
+        <NextClassCard nextClass={nextClass} />
+      </div>
+      </div>
     </section>
   );
 }

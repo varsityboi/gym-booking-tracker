@@ -5,7 +5,7 @@ import FoodSearch from "./FoodSearch.jsx";
 import NumbersForm from "./NumbersForm.jsx";
 
 const tabClass = (active) =>
-  `flex-1 rounded-md py-2 text-sm font-medium ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`;
+  `flex-1 rounded-full py-2 text-sm font-medium ${active ? "bg-surface text-ink shadow-sm" : "text-ink-soft"}`;
 
 // Adds a food to the review without a photo: a table food found by search
 // (with grams), or a custom food with its own numbers.
@@ -24,14 +24,14 @@ export default function AddFoodPanel({ onAdd, onClose }) {
   }
 
   return (
-    <section aria-label="Add food manually" className="rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label="Add food manually" className="rounded-card bg-surface p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-900">Add food</h2>
-        <button type="button" onClick={onClose} className="text-sm font-medium text-slate-500 hover:text-slate-800">
+        <h2 className="font-bold text-ink">Add food</h2>
+        <button type="button" onClick={onClose} className="text-sm font-medium text-ink-muted hover:text-ink">
           Close
         </button>
       </div>
-      <div className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist">
+      <div className="mt-3 flex gap-1 rounded-full bg-sunken p-1" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "search"} className={tabClass(tab === "search")} onClick={() => setTab("search")}>
           From the food list
         </button>
@@ -46,11 +46,11 @@ export default function AddFoodPanel({ onAdd, onClose }) {
         ) : food ? (
           <form onSubmit={addFood} noValidate className="space-y-3">
             <div>
-              <p className="font-medium text-slate-900">{food.name}</p>
-              <p className="text-sm text-slate-500">{fmtKcal(food.calories_per_100g)} kcal per 100 g</p>
+              <p className="font-bold text-ink">{food.name}</p>
+              <p className="text-sm text-ink-muted">{fmtKcal(food.calories_per_100g)} kcal per 100 g</p>
             </div>
             <div>
-              <label htmlFor={gramsId} className="mb-1.5 block text-sm font-medium text-slate-700">
+              <label htmlFor={gramsId} className="mb-1.5 block text-sm font-medium text-ink-soft">
                 Grams
               </label>
               <input
@@ -60,11 +60,11 @@ export default function AddFoodPanel({ onAdd, onClose }) {
                 autoFocus
                 value={grams}
                 onChange={(e) => setGrams(e.target.value)}
-                className="block h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="block h-12 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
             {error && (
-              <p role="alert" className="text-sm text-red-700 first-letter:uppercase">
+              <p role="alert" className="text-sm text-danger first-letter:uppercase">
                 {error}
               </p>
             )}

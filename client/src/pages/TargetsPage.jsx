@@ -60,12 +60,12 @@ function MacroHint({ form }) {
   const diff = calories > 0 ? (fromMacros - calories) / calories : 0;
   const far = calories > 0 && Math.abs(diff) > 0.15;
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600" aria-live="polite">
+    <div className="rounded-2xl bg-sunken px-4 py-3 text-sm text-ink-soft" aria-live="polite">
       <p data-testid="macro-hint">
         Protein, fat and carbs add up to about {fmtKcal.format(fromMacros)} kcal (4 / 9 / 4 kcal per gram).
       </p>
       {far && (
-        <p className="mt-1 text-amber-800" data-testid="macro-note">
+        <p className="mt-1 font-semibold text-warn" data-testid="macro-note">
           That's about {Math.round(Math.abs(diff) * 100)}% {diff > 0 ? "more" : "less"} than your calorie target of{" "}
           {fmtKcal.format(calories)} kcal. That's fine to save; you may want to adjust one or the other.
         </p>
@@ -80,13 +80,13 @@ export default function TargetsPage() {
   return (
     <section className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Daily targets</h1>
-        <p className="mt-0.5 text-sm text-slate-500">What you aim for each day. Today's screen tracks you against these.</p>
+        <h1 className="text-2xl font-extrabold text-ink md:text-3xl">Daily targets</h1>
+        <p className="mt-0.5 text-sm text-ink-muted">What you aim for each day. Today's screen tracks you against these.</p>
       </div>
       {status === "error" ? (
         <RetryBox message={`Couldn't load your targets: ${error.message}`} onRetry={retry} />
       ) : status === "loading" ? (
-        <p className="text-sm text-slate-500" role="status">
+        <p className="text-sm text-ink-muted" role="status">
           Loading targets…
         </p>
       ) : (
@@ -144,13 +144,23 @@ function TargetsForm({ initial, isNew }) {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-4">
+    // Phone: one column. md+: a card with the fields in two columns; the
+    // notes, hint and Save span both.
+    <form
+      onSubmit={submit}
+      noValidate
+      className="grid max-w-3xl gap-4 rounded-card bg-surface p-5 shadow-card md:grid-cols-2 md:gap-x-6 md:p-8"
+    >
       {isNew && !saved && (
-        <p className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+        <p className="rounded-2xl border border-primary-line bg-primary-soft px-4 py-3 text-sm text-primary-ink md:col-span-2">
           You haven't set targets yet. Fill these in to see progress bars on Today.
         </p>
       )}
-      <FormError message={serverError} />
+      {serverError && (
+        <div className="md:col-span-2">
+          <FormError message={serverError} />
+        </div>
+      )}
       {TARGET_FIELDS.map(({ name, label, unit }) => (
         <TextField
           key={name}
@@ -162,18 +172,24 @@ function TargetsForm({ initial, isNew }) {
           {...field(name)}
         />
       ))}
-      <MacroHint form={form} />
-      <SubmitButton busy={saving} busyLabel="Saving…">
-        Save targets
-      </SubmitButton>
+      <div className="md:col-span-2">
+        <MacroHint form={form} />
+      </div>
+      <div className="md:col-span-2 md:flex md:items-center md:gap-4">
+        <div className="md:w-64">
+          <SubmitButton busy={saving} busyLabel="Saving…">
+            Save targets
+          </SubmitButton>
+        </div>
       {saved && (
-        <p role="status" className="text-center text-sm font-medium text-emerald-700">
+        <p role="status" className="mt-3 text-center text-sm font-bold text-success md:mt-0 md:text-left">
           Saved ✓{" "}
-          <Link to="/today" className="text-indigo-600 underline hover:text-indigo-800">
+          <Link to="/today" className="text-primary-ink underline underline-offset-2 hover:text-primary-hover">
             See today's progress
           </Link>
         </p>
       )}
+      </div>
     </form>
   );
 }

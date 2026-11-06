@@ -1,1 +1,62 @@
 @import "tailwindcss";
+
+/* Warm, friendly theme. Every text colour below meets WCAG AA (4.5:1) on the
+   backgrounds it's used on: ink, ink-soft and ink-muted on cream, surface and
+   sunken; on-primary on primary; each status colour on surface and on its own
+   soft tint. (Checked: lowest is ink-muted on sunken at 4.6:1, white on
+   primary is 5.2:1.) Bars use the same hues but always come with text. */
+@theme {
+  --font-sans: "Nunito", ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Page and surfaces */
+  --color-cream: #fbf5ec;
+  --color-sunken: #f4ece0;
+  --color-surface: #ffffff;
+  --color-line: #eee3d6;
+  --color-line-strong: #dccbb8;
+
+  /* Text: warm dark brown-grey */
+  --color-ink: #3d2f28;
+  --color-ink-soft: #5e4d42;
+  --color-ink-muted: #7a6658;
+
+  /* Primary: warm orange */
+  --color-primary: #c2410c;
+  --color-primary-hover: #9a3412;
+  --color-primary-ink: #9a3412;
+  --color-primary-soft: #fdebdc;
+  --color-primary-soft-hover: #fbdcc2;
+  --color-primary-line: #f6c9a6;
+  --color-on-primary: #ffffff;
+
+  /* Status */
+  --color-success: #2f6f3e;
+  --color-success-soft: #e5f3e8;
+  --color-warn: #96530a;
+  --color-warn-bar: #e08e0b;
+  --color-warn-soft: #fdf1d8;
+  --color-warn-line: #f2cf8a;
+  --color-danger: #b42318;
+  --color-danger-hover: #912018;
+  --color-danger-soft: #fdecea;
+  --color-danger-line: #f2b8b2;
+  --color-water: #1f6f8b;
+  --color-water-hover: #185a71;
+  --color-water-soft: #e3f1f6;
+
+  /* Shape */
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(61 47 40 / 0.05), 0 6px 20px -6px rgb(61 47 40 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(61 47 40 / 0.06), 0 14px 32px -10px rgb(61 47 40 / 0.22);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+}

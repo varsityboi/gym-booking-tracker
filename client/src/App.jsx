@@ -8,7 +8,6 @@ import ClassesPage from "./pages/ClassesPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import MealsPage from "./pages/MealsPage.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
-import StatusPage from "./pages/StatusPage.jsx";
 import TargetsPage from "./pages/TargetsPage.jsx";
 import TodayPage from "./pages/TodayPage.jsx";
 
@@ -24,8 +23,6 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
       </Route>
-      {/* TEMPORARY: checks the API connection; remove with StatusPage. */}
-      <Route path="/status" element={<StatusPage />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>

@@ -57,28 +57,28 @@ export default function AdminClassCard({ cls, reload, refreshKey }) {
 
   return (
     <li
-      className={`rounded-xl border bg-white p-4 ${cancelled ? "border-slate-200 opacity-80" : "border-slate-200"}`}
+      className={`rounded-card p-5 ${cancelled ? "border border-line bg-sunken" : "bg-surface shadow-card"}`}
       data-class-id={cls.id}
       aria-busy={busy || undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-semibold text-slate-900">{cls.title}</h3>
-          <p className="mt-0.5 text-sm text-slate-600">{timeOfDay(cls.starts_at)}</p>
-          <p className="mt-1 text-sm text-slate-700" data-testid="counts">
+          <h3 className="font-bold text-ink">{cls.title}</h3>
+          <p className="mt-0.5 text-sm text-ink-soft">{timeOfDay(cls.starts_at)}</p>
+          <p className="mt-1 text-sm text-ink-soft" data-testid="counts">
             {cls.booked} of {cls.capacity} booked · {cls.waiting_count} waiting
           </p>
         </div>
         {cancelled && (
-          <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Cancelled</span>
+          <span className="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-bold text-ink-soft ring-1 ring-line-strong">Cancelled</span>
         )}
       </div>
       {cancelled && (
-        <p className="mt-1 text-sm text-slate-500">{cls.cancel_reason ? `Reason: ${cls.cancel_reason}` : "No reason given"}</p>
+        <p className="mt-1 text-sm text-ink-muted">{cls.cancel_reason ? `Reason: ${cls.cancel_reason}` : "No reason given"}</p>
       )}
 
       {notice && (
-        <p role="status" className="mt-2 text-sm font-medium text-emerald-700">
+        <p role="status" className="mt-2 rounded-xl bg-success-soft px-3 py-2 text-sm font-bold text-success">
           {notice}
         </p>
       )}
@@ -88,7 +88,7 @@ export default function AdminClassCard({ cls, reload, refreshKey }) {
         <>
           <form onSubmit={saveCapacity} noValidate className="mt-3 flex items-end gap-2">
             <div className="w-24">
-              <label htmlFor={capacityId} className="mb-1 block text-xs font-medium text-slate-600">
+              <label htmlFor={capacityId} className="mb-1 block text-xs font-medium text-ink-soft">
                 Places
               </label>
               <input
@@ -98,14 +98,14 @@ export default function AdminClassCard({ cls, reload, refreshKey }) {
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 aria-invalid={capacityProblem ? true : undefined}
-                className="block h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="block h-10 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
             <PrimaryButton type="submit" disabled={busy}>
               Save
             </PrimaryButton>
           </form>
-          {capacityProblem && <p className="mt-1 text-sm text-red-700 first-letter:uppercase">{capacityProblem}</p>}
+          {capacityProblem && <p className="mt-1 text-sm text-danger first-letter:uppercase">{capacityProblem}</p>}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <SecondaryButton onClick={() => setPeopleOpen((o) => !o)} aria-expanded={peopleOpen}>
@@ -134,7 +134,7 @@ export default function AdminClassCard({ cls, reload, refreshKey }) {
           onConfirm={cancelClass}
           onCancel={() => setConfirming(false)}
         >
-          <label htmlFor={reasonId} className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor={reasonId} className="mb-1.5 block text-sm font-medium text-ink-soft">
             Reason (optional)
           </label>
           <input
@@ -143,9 +143,9 @@ export default function AdminClassCard({ cls, reload, refreshKey }) {
             maxLength={200}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. Instructor is ill"
-            className="block h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="block h-11 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
-          <p className="mt-1 text-xs text-slate-500">{reason.trim().length}/200</p>
+          <p className="mt-1 text-xs text-ink-muted">{reason.trim().length}/200</p>
         </ConfirmDialog>
       )}
     </li>

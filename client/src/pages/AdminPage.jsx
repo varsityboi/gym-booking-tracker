@@ -48,7 +48,7 @@ export default function AdminPage() {
       status === "error" ? (
         <RetryBox message={`Couldn't load classes: ${error.message}`} onRetry={reload} />
       ) : (
-        <p className="text-sm text-slate-500" role="status">
+        <p className="text-sm text-ink-muted" role="status">
           Loading classes…
         </p>
       );
@@ -61,7 +61,7 @@ export default function AdminPage() {
           <RetryBox message={`Couldn't refresh: ${error.message}. Showing the last loaded list.`} onRetry={reload} />
         )}
         {shown.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+          <p className="rounded-card border-2 border-dashed border-line-strong p-8 text-center text-sm text-ink-muted">
             {hidden > 0
               ? `No scheduled classes in the next 30 days (${hidden} cancelled hidden)`
               : "No classes in the next 30 days"}
@@ -69,8 +69,8 @@ export default function AdminPage() {
         ) : (
           groupByDay(shown, (c) => c.starts_at).map((group) => (
             <div key={group.key}>
-              <h3 className="mb-2 text-base font-semibold text-slate-800">{group.heading}</h3>
-              <ul className="space-y-3">
+              <h3 className="mb-3 text-lg font-extrabold text-ink">{group.heading}</h3>
+              <ul className="grid items-start gap-4 xl:grid-cols-2">
                 {group.items.map((cls) => (
                   <AdminClassCard key={cls.id} cls={cls} reload={reload} refreshKey={refreshKey} />
                 ))}
@@ -84,28 +84,34 @@ export default function AdminPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Admin</h1>
+      <h1 className="text-2xl font-extrabold text-ink md:text-3xl">Admin</h1>
 
-      <NewClassForm onCreated={reload} />
+      {/* Phone: form above the list. md+: form on the left (staying in view),
+          classes on the right. */}
+      <div className="space-y-6 md:grid md:grid-cols-[18rem_minmax(0,1fr)] md:items-start md:gap-6 md:space-y-0 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="md:sticky md:top-24">
+        <NewClassForm onCreated={reload} />
+      </div>
 
       <section aria-labelledby="upcoming-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 id="upcoming-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h2 id="upcoming-heading" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
             Next 30 days
           </h2>
-          <label htmlFor={toggleId} className="flex items-center gap-2 text-sm text-slate-700">
+          <label htmlFor={toggleId} className="flex items-center gap-2 text-sm text-ink-soft">
             <input
               id={toggleId}
               type="checkbox"
               checked={showCancelled}
               onChange={(e) => setShowCancelled(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-200"
+              className="h-4 w-4 accent-primary"
             />
             Show cancelled
           </label>
         </div>
         {list}
       </section>
+      </div>
     </section>
   );
 }

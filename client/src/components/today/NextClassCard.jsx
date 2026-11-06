@@ -5,25 +5,25 @@ import { dayAndTime } from "../../time.js";
 export default function NextClassCard({ nextClass }) {
   return (
     <section aria-labelledby="next-class-heading">
-      <h2 id="next-class-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <h2 id="next-class-heading" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
         Next class
       </h2>
       <Link
         to="/classes"
-        className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:bg-slate-50"
+        className="mt-2 flex items-center justify-between gap-3 rounded-card bg-surface p-5 shadow-card transition-shadow hover:shadow-lift"
       >
         {nextClass ? (
           <span className="min-w-0">
-            <span className="block truncate font-semibold text-slate-900">{nextClass.title}</span>
-            <span className="mt-0.5 block text-sm text-slate-600">{dayAndTime(nextClass.starts_at)}</span>
+            <span className="block truncate font-bold text-ink">{nextClass.title}</span>
+            <span className="mt-0.5 block text-sm text-ink-soft">{dayAndTime(nextClass.starts_at)}</span>
           </span>
         ) : (
           <span className="min-w-0">
-            <span className="block font-semibold text-slate-900">No class booked</span>
-            <span className="mt-0.5 block text-sm text-indigo-600">Browse classes</span>
+            <span className="block font-bold text-ink">No class booked</span>
+            <span className="mt-0.5 block text-sm font-semibold text-primary-ink">Browse classes</span>
           </span>
         )}
-        <span aria-hidden="true" className="text-slate-400">
+        <span aria-hidden="true" className="text-ink-muted">
           ›
         </span>
       </Link>

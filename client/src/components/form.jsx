@@ -1,20 +1,20 @@
 import { useId, useState } from "react";
 
-// Shared form pieces for the auth screens: large touch targets and 16px text
+// Shared form pieces: large touch targets and 16px text
 // (so iOS doesn't zoom into inputs), a label on every field, and each field's
 // error shown under it and linked with aria-describedby.
 
 const inputClass = (invalid) =>
-  `block h-12 w-full rounded-lg border bg-white px-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+  `block h-12 w-full rounded-xl border bg-surface px-3.5 text-base text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 ${
     invalid
-      ? "border-red-400 focus:border-red-500 focus:ring-red-200"
-      : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-200"
+      ? "border-danger focus:border-danger focus:ring-danger/30"
+      : "border-line-strong focus:border-primary focus:ring-primary/30"
   }`;
 
 function FieldError({ id, message }) {
   if (!message) return null;
   return (
-    <p id={id} className="mt-1.5 text-sm text-red-600 first-letter:uppercase">
+    <p id={id} className="mt-1.5 text-sm text-danger first-letter:uppercase">
       {message}
     </p>
   );
@@ -25,7 +25,7 @@ export function TextField({ label, error, inputRef, ...inputProps }) {
   const errorId = `${id}-error`;
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink-soft">
         {label}
       </label>
       <input
@@ -48,7 +48,7 @@ export function PasswordField({ label, error, inputRef, ...inputProps }) {
   const [visible, setVisible] = useState(false);
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink-soft">
         {label}
       </label>
       <div className="relative">
@@ -69,7 +69,7 @@ export function PasswordField({ label, error, inputRef, ...inputProps }) {
           onClick={() => setVisible((v) => !v)}
           aria-pressed={visible}
           aria-label={visible ? "Hide password" : "Show password"}
-          className="absolute inset-y-0 right-0 flex w-18 items-center justify-center rounded-r-lg text-sm font-medium text-indigo-600 hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200"
+          className="absolute inset-y-0 right-0 flex w-18 items-center justify-center rounded-r-xl text-sm font-bold text-primary-ink hover:text-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           {visible ? "Hide" : "Show"}
         </button>
@@ -85,7 +85,7 @@ export function FormError({ message }) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 first-letter:uppercase"
+      className="rounded-2xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-medium text-danger first-letter:uppercase"
     >
       {message}
     </div>
@@ -98,7 +98,7 @@ export function SubmitButton({ busy, busyLabel, children }) {
       type="submit"
       disabled={busy}
       aria-busy={busy || undefined}
-      className="h-12 w-full rounded-lg bg-indigo-600 text-base font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-indigo-400"
+      className="h-12 w-full rounded-full bg-primary text-base font-bold text-on-primary shadow-sm transition-colors hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-primary/60"
     >
       {busy ? busyLabel : children}
     </button>

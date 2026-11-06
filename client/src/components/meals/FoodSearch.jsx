@@ -48,7 +48,7 @@ export default function FoodSearch({ onPick, label = "Search foods", autoFocus =
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink-soft">
         {label}
       </label>
       <input
@@ -59,25 +59,25 @@ export default function FoodSearch({ onPick, label = "Search foods", autoFocus =
         autoFocus={autoFocus}
         placeholder="e.g. paratha, dal, banana"
         autoComplete="off"
-        className="block h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        className="block h-12 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
       />
       <div className="mt-2" aria-live="polite">
-        {state.status === "loading" && <p className="text-sm text-slate-500">Searching…</p>}
-        {state.status === "error" && <p className="text-sm text-red-700 first-letter:uppercase">{state.error}</p>}
+        {state.status === "loading" && <p className="text-sm text-ink-muted">Searching…</p>}
+        {state.status === "error" && <p className="text-sm text-danger first-letter:uppercase">{state.error}</p>}
         {state.status === "done" && state.results.length === 0 && (
-          <p className="text-sm text-slate-500">No foods match "{query.trim()}"</p>
+          <p className="text-sm text-ink-muted">No foods match "{query.trim()}"</p>
         )}
         {state.status === "done" && state.results.length > 0 && (
-          <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200" aria-label="Search results">
+          <ul className="divide-y divide-line rounded-xl border border-line" aria-label="Search results">
             {state.results.map((food) => (
               <li key={food.id}>
                 <button
                   type="button"
                   onClick={() => onPick(food)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-slate-50 focus:outline-none focus-visible:bg-indigo-50"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-sunken focus:outline-none focus-visible:bg-primary-soft"
                 >
-                  <span className="min-w-0 text-sm text-slate-900">{food.name}</span>
-                  <span className="shrink-0 text-xs text-slate-500">{fmtKcal(food.calories_per_100g)} kcal/100g</span>
+                  <span className="min-w-0 text-sm text-ink">{food.name}</span>
+                  <span className="shrink-0 text-xs text-ink-muted">{fmtKcal(food.calories_per_100g)} kcal/100g</span>
                 </button>
               </li>
             ))}

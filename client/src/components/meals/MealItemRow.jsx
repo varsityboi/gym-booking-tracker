@@ -49,11 +49,11 @@ export default function MealItemRow({ mealId, item, reload }) {
     <li className="py-3" data-item-id={item.id} aria-busy={busy || undefined}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-slate-900">
+          <p className="font-bold text-ink">
             {item.name}
-            {item.kind === "estimated" && <span className="ml-2 text-xs font-normal text-slate-500">estimate</span>}
+            {item.kind === "estimated" && <span className="ml-2 text-xs font-normal text-ink-muted">estimate</span>}
           </p>
-          <p className="text-sm text-slate-500">{fmt(item.grams)} g</p>
+          <p className="text-sm text-ink-muted">{fmt(item.grams)} g</p>
           <NutritionLine nutrition={item.nutrition} />
         </div>
         {!editing && (
@@ -78,7 +78,7 @@ export default function MealItemRow({ mealId, item, reload }) {
       {editing && (
         <form onSubmit={saveGrams} noValidate className="mt-2 flex items-end gap-2">
           <div className="w-28">
-            <label htmlFor={gramsId} className="mb-1 block text-xs font-medium text-slate-600">
+            <label htmlFor={gramsId} className="mb-1 block text-xs font-medium text-ink-soft">
               Grams
             </label>
             <input
@@ -88,7 +88,7 @@ export default function MealItemRow({ mealId, item, reload }) {
               autoFocus
               value={grams}
               onChange={(e) => setGrams(e.target.value)}
-              className="block h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="block h-10 w-full rounded-xl border border-line-strong bg-surface px-3 text-base text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <PrimaryButton type="submit" disabled={busy}>
@@ -99,7 +99,7 @@ export default function MealItemRow({ mealId, item, reload }) {
           </SecondaryButton>
         </form>
       )}
-      {gramsProblem && editing && <p className="mt-1 text-sm text-red-700 first-letter:uppercase">{gramsProblem}</p>}
+      {gramsProblem && editing && <p className="mt-1 text-sm text-danger first-letter:uppercase">{gramsProblem}</p>}
       <CardError message={error?.message} />
 
       {confirming && (

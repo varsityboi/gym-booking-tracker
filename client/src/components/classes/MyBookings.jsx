@@ -15,13 +15,13 @@ export default function MyBookings({ bookings, waitlist, reload }) {
 
   return (
     <section aria-labelledby="my-bookings">
-      <h2 id="my-bookings" className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <h2 id="my-bookings" className="text-sm font-bold uppercase tracking-wide text-ink-muted">
         My bookings
       </h2>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-500">Nothing booked yet.</p>
+        <p className="mt-2 text-sm text-ink-muted">Nothing booked yet. Pick a class below to get moving!</p>
       ) : (
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-3 grid gap-3 md:grid-cols-2">
           {rows.map((row) => (
             <MyBookingRow key={row.key} row={row} reload={reload} />
           ))}
@@ -42,12 +42,12 @@ function MyBookingRow({ row, reload }) {
   const leave = () => run(() => api(`/classes/${row.class_id}/waitlist/leave`, { method: "POST" }));
 
   return (
-    <li className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3" data-my-class-id={row.class_id}>
+    <li className="rounded-2xl border border-primary-line bg-primary-soft/60 p-4" data-my-class-id={row.class_id}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-medium text-slate-900">{row.title}</p>
-          <p className="text-sm text-slate-600">{dayAndTime(row.starts_at)}</p>
-          <p className={`text-sm font-semibold ${row.kind === "booking" ? "text-emerald-700" : "text-amber-700"}`}>
+          <p className="truncate font-bold text-ink">{row.title}</p>
+          <p className="text-sm text-ink-soft">{dayAndTime(row.starts_at)}</p>
+          <p className={`text-sm font-semibold ${row.kind === "booking" ? "text-success" : "text-warn"}`}>
             {row.kind === "booking" ? "Booked ✓" : `Waitlist: ${ordinal(row.position)} in line`}
           </p>
         </div>

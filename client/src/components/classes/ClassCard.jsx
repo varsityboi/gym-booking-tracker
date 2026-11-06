@@ -26,7 +26,7 @@ export default function ClassCard({ cls, booking, waiting, reload }) {
   let status = null;
   let action;
   if (booking) {
-    status = <span className="text-sm font-semibold text-emerald-700">Booked ✓</span>;
+    status = <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-sm font-bold text-success">Booked ✓</span>;
     action = (
       <SecondaryButton onClick={() => setConfirming(true)} disabled={busy}>
         Cancel
@@ -34,7 +34,7 @@ export default function ClassCard({ cls, booking, waiting, reload }) {
     );
   } else if (waiting) {
     status = (
-      <span className="text-sm font-semibold text-amber-700">You're {ordinal(waiting.position)} in line</span>
+      <span className="rounded-full bg-warn-soft px-2.5 py-0.5 text-sm font-bold text-warn">You're {ordinal(waiting.position)} in line</span>
     );
     action = (
       <SecondaryButton onClick={leaveWaitlist} disabled={busy}>
@@ -61,12 +61,12 @@ export default function ClassCard({ cls, booking, waiting, reload }) {
     error?.status === 409 && error.message === CLASS_FULL_MESSAGE && !booking && !waiting && !full;
 
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4" data-class-id={cls.id} aria-busy={busy || undefined}>
+    <li className="rounded-card bg-surface p-5 shadow-card" data-class-id={cls.id} aria-busy={busy || undefined}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate font-semibold text-slate-900">{cls.title}</h3>
-          <p className="mt-0.5 text-sm text-slate-600">{timeOfDay(cls.starts_at)}</p>
-          <p className={`mt-1 text-sm ${full ? "font-medium text-red-700" : "text-slate-500"}`}>
+          <h3 className="truncate font-bold text-ink">{cls.title}</h3>
+          <p className="mt-0.5 text-sm text-ink-soft">{timeOfDay(cls.starts_at)}</p>
+          <p className={`mt-1 text-sm ${full ? "font-medium text-danger" : "text-ink-muted"}`}>
             {full
               ? "Full"
               : `${cls.places_left} of ${cls.capacity} ${cls.places_left === 1 ? "place" : "places"} left`}

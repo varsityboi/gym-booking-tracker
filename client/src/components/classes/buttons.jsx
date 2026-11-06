@@ -1,13 +1,13 @@
 // Buttons and messages shared by class cards and "My bookings" rows.
 
 const base =
-  "h-10 rounded-lg px-4 text-sm font-semibold focus:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60";
+  "h-10 rounded-full px-5 text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 export function PrimaryButton({ children, ...props }) {
   return (
     <button
       type="button"
-      className={`${base} bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:ring-indigo-300`}
+      className={`${base} bg-primary text-on-primary hover:bg-primary-hover focus-visible:ring-primary/45`}
       {...props}
     >
       {children}
@@ -19,7 +19,7 @@ export function SecondaryButton({ children, ...props }) {
   return (
     <button
       type="button"
-      className={`${base} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:ring-indigo-200`}
+      className={`${base} border border-line-strong bg-surface text-ink-soft hover:bg-sunken focus-visible:ring-primary/30`}
       {...props}
     >
       {children}
@@ -30,7 +30,7 @@ export function SecondaryButton({ children, ...props }) {
 export function CardError({ message }) {
   if (!message) return null;
   return (
-    <p role="alert" className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 first-letter:uppercase">
+    <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger first-letter:uppercase">
       {message}
     </p>
   );

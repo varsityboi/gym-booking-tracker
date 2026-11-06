@@ -8,8 +8,15 @@ const MEMBER_LINKS = [
   { to: "/targets", label: "Targets" },
 ];
 
-// Phone-width app shell: header with logout, page content, and a bottom
-// navigation bar (plus Admin for admins).
+const logo = (
+  <span className="text-lg font-extrabold text-primary-ink">
+    <span aria-hidden="true">🌿 </span>Gym
+  </span>
+);
+
+// The app shell. Phone: a header with the name and Log out, one column, and a
+// bottom navigation bar. From md up: one top bar with the logo, the links, the
+// name and Log out (no bottom bar), and content up to 64rem wide.
 export default function Layout() {
   const navigate = useNavigate();
   const user = getUser();
@@ -20,39 +27,74 @@ export default function Layout() {
     navigate("/login", { replace: true });
   }
 
+  const logoutButton = (
+    <button
+      type="button"
+      onClick={logout}
+      className="rounded-full border border-line-strong bg-surface px-4 py-1.5 text-sm font-bold text-ink-soft transition-colors hover:bg-sunken focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+    >
+      Log out
+    </button>
+  );
+
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-white">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <span className="text-lg font-semibold text-slate-900">Gym</span>
-        <div className="flex items-center gap-3">
-          {user?.name && <span className="text-sm text-slate-500">{user.name}</span>}
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Log out
-          </button>
+    <div className="flex min-h-dvh flex-col">
+      <header className="sticky top-0 z-10 border-b border-line bg-surface/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-4 px-4 py-3 md:max-w-5xl md:px-6">
+          {logo}
+          <nav aria-label="Main" className="hidden md:block">
+            <ul className="flex items-center gap-1">
+              {links.map(({ to, label }) => (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    className={({ isActive }) =>
+                      `block rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+                        isActive ? "bg-primary text-on-primary" : "text-ink-soft hover:bg-sunken hover:text-ink"
+                      }`
+                    }
+                  >
+                    {label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="flex items-center gap-3">
+            {user?.name && <span className="max-w-[10rem] truncate text-sm text-ink-muted">{user.name}</span>}
+            {logoutButton}
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-24">
+      <main className="mx-auto w-full max-w-md flex-1 px-4 py-5 pb-28 md:max-w-5xl md:px-6 md:py-8 md:pb-12">
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto w-full max-w-md border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
-        <ul className="flex">
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        <ul className="mx-auto flex w-full max-w-md">
           {links.map(({ to, label }) => (
             <li key={to} className="flex-1">
               <NavLink
                 to={to}
                 className={({ isActive }) =>
-                  `block py-3 text-center text-sm font-medium ${
-                    isActive ? "text-indigo-600" : "text-slate-500 hover:text-slate-800"
+                  `flex flex-col items-center gap-1 py-2.5 text-center text-sm font-bold ${
+                    isActive ? "text-primary-ink" : "text-ink-muted hover:text-ink"
                   }`
                 }
               >
-                {label}
+                {({ isActive }) => (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className={`h-1 w-6 rounded-full ${isActive ? "bg-primary" : "bg-transparent"}`}
+                    />
+                    {label}
+                  </>
+                )}
               </NavLink>
             </li>
           ))}
