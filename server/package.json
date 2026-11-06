@@ -9,7 +9,10 @@
     "db:setup": "node --env-file=.env scripts/setup-db.js",
     "db:foods": "node --env-file=.env scripts/import-foods.js",
     "test": "node --test tests/*.test.js",
-    "test:db": "node scripts/test-db.js"
+    "test:db": "node scripts/test-db.js",
+    "db:seed": "node --env-file=.env scripts/seed.js",
+    "dev:seed": "node --env-file=.env scripts/dev-seed.js",
+    "perf": "node --env-file=.env scripts/perf.js"
   },
   "keywords": [],
   "author": "",
