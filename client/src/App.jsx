@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import SignupPage from "./pages/SignupPage.jsx";
 import StatusPage from "./pages/StatusPage.jsx";
+import TodayPage from "./pages/TodayPage.jsx";
 
 // "/" and unknown paths: /today when logged in, /login otherwise.
 function HomeRedirect() {
@@ -26,7 +27,7 @@ export default function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
-          <Route path="/today" element={<Placeholder title="Today" />} />
+          <Route path="/today" element={<TodayPage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/meals" element={<Placeholder title="Meals" />} />
           <Route path="/targets" element={<Placeholder title="Targets" />} />

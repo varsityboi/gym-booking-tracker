@@ -53,3 +53,16 @@ export function ordinal(n) {
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
   return `${n}${{ 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th"}`;
 }
+
+const longDateFormat = new Intl.DateTimeFormat("en-IN", {
+  timeZone: GYM_TIME_ZONE,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+// "2026-11-07" (a gym-local calendar day, as the server sends it) ->
+// "Saturday, 7 November 2026". Midday India time, so it's the same day
+// whatever the phone's own time zone.
+export const longDate = (isoDay) => longDateFormat.format(new Date(`${isoDay}T12:00:00+05:30`));

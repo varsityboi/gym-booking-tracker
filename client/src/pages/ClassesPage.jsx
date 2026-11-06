@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import ClassCard from "../components/classes/ClassCard.jsx";
 import MyBookings from "../components/classes/MyBookings.jsx";
+import RetryBox from "../components/RetryBox.jsx";
 import { dayHeading, dayKey } from "../time.js";
 
 // GET /classes (scheduled, next 7 days) and GET /bookings/mine together.
@@ -45,21 +46,6 @@ function groupByDay(classes) {
     groups.at(-1).classes.push(cls);
   }
   return groups;
-}
-
-function RetryBox({ message, onRetry }) {
-  return (
-    <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4">
-      <p className="text-sm font-medium text-red-800 first-letter:uppercase">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-3 h-10 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700"
-      >
-        Retry
-      </button>
-    </div>
-  );
 }
 
 export default function ClassesPage() {
